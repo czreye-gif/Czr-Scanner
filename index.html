@@ -79,6 +79,18 @@
     cursor:pointer; backdrop-filter:blur(4px); flex:none; box-shadow:0 2px 8px rgba(0,0,0,.25);
   }
   .zoom-ctrls #zFit{font-size:12px; letter-spacing:.04em}
+
+  /* ---- modal esquinas ---- */
+  .modal{
+    position:fixed; inset:0; background:rgba(10,11,13,.88); z-index:50;
+    display:flex; align-items:center; justify-content:center; padding:16px;
+  }
+  .modal.hidden{display:none}
+  .modal-inner{background:var(--paper); border-radius:6px; padding:14px; width:100%; max-width:560px}
+  .modal-head{font-size:13px; color:var(--ink); margin-bottom:10px; text-align:center; font-weight:600}
+  .corner-area{position:relative; width:100%; background:#000; border-radius:4px; overflow:hidden; margin-bottom:12px; touch-action:none}
+  .corner-area canvas{display:block; width:100%; height:auto}
+  .corner-area svg{position:absolute; top:0; left:0; width:100%; height:100%}
   .rev-stage img{
     display:block; max-width:100%; max-height:62vh; width:auto; height:auto;
     box-shadow:0 2px 18px rgba(0,0,0,.22); background:#fff;
@@ -208,7 +220,10 @@
       <button class="f-btn" id="f-byn">B/N texto</button>
     </div>
     <div class="row">
+      <button class="b-ghost" id="btnCorners">⛶ Ajustar esquinas</button>
       <button class="b-ghost" id="btnRetake">↺ Rehacer</button>
+    </div>
+    <div class="row">
       <button class="b-primary" id="btnMore">+ Otra página</button>
     </div>
     <div class="row">
@@ -222,6 +237,21 @@
 
   <div class="status" id="status"></div>
 </main>
+
+<!-- ===== MODAL AJUSTE DE ESQUINAS ===== -->
+<div id="cornerModal" class="modal hidden">
+  <div class="modal-inner">
+    <div class="modal-head">Arrastra las 4 esquinas al borde del documento</div>
+    <div class="corner-area" id="cornerArea">
+      <canvas id="cornerCanvas"></canvas>
+      <svg id="cornerSvg"></svg>
+    </div>
+    <div class="row">
+      <button class="b-ghost" id="cornerCancel">Cancelar</button>
+      <button class="b-sello" id="cornerApply">Aplicar recorte</button>
+    </div>
+  </div>
+</div>
 
 <footer>
   <div class="inner">
@@ -330,14 +360,13 @@ function startLive(){
       // ---- autocaptura ----
       if($('auto').checked && stable){
         stableCount++;
-        if(stableCount===2) setStatus('Documento estable… capturando.');
-        if(stableCount>=3){ // ~3 ciclos quieto ≈ 1 s
+        if(stableCount>=2){ // ~2 ciclos quieto, más ágil
           stableCount=0; prevQuad=null;
           $('btnShot').click();
         }
       } else stableCount=0;
     } else { lastQuad=null; stableCount=0; }
-  }, 350);
+  }, 280);
 }
 
 /* mide si el cuadrilátero casi no se movió respecto al frame anterior */
@@ -413,11 +442,41 @@ $('file').onchange = (e)=>{
 };
 
 /* ---------- capturar de la cámara ---------- */
-$('btnShot').onclick = ()=>{
+$('btnShot').onclick = async ()=>{
   if(video.classList.contains('hidden')) return;
   stopLive();
-  processSource(video, video.videoWidth, video.videoHeight);
+  const w=video.videoWidth, h=video.videoHeight;
+  setStatus('Capturando…');
+  // ---- multi-frame: promedia 3 tomas para reducir ruido y ganar definición ----
+  const merged=await captureMultiFrame(w, h, 3);
+  processSource(merged, w, h);
 };
+
+// captura N frames consecutivos y los promedia en un canvas
+function captureMultiFrame(w, h, n){
+  return new Promise((resolve)=>{
+    const acc=new Float32Array(w*h*4);
+    let count=0;
+    const tmp=document.createElement('canvas'); tmp.width=w; tmp.height=h;
+    const tctx=tmp.getContext('2d');
+    const grab=()=>{
+      tctx.drawImage(video,0,0,w,h);
+      const d=tctx.getImageData(0,0,w,h).data;
+      for(let i=0;i<d.length;i++) acc[i]+=d[i];
+      count++;
+      if(count<n){ requestAnimationFrame(grab); }
+      else {
+        const out=document.createElement('canvas'); out.width=w; out.height=h;
+        const octx=out.getContext('2d');
+        const od=octx.createImageData(w,h), op=od.data;
+        for(let i=0;i<op.length;i++) op[i]=acc[i]/n;
+        octx.putImageData(od,0,0);
+        resolve(out);
+      }
+    };
+    grab();
+  });
+}
 
 /* ---------- pipeline: detectar bordes + enderezar + limpiar ---------- */
 async function processSource(src, w, h){
@@ -435,42 +494,50 @@ async function processSource(src, w, h){
     cv.dilate(edges, edges, cv.Mat.ones(3,3,cv.CV_8U));
 
     let contours=new cv.MatVector(), hier=new cv.Mat();
-    cv.findContours(edges, contours, hier, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    cv.findContours(edges, contours, hier, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
 
-    let best=null, bestArea=w*h*0.18; // mínimo 18% del cuadro
+    let bestQuad=null, bestArea=w*h*0.18;
     for(let i=0;i<contours.size();i++){
       const c=contours.get(i), peri=cv.arcLength(c,true), approx=new cv.Mat();
       cv.approxPolyDP(c, approx, 0.02*peri, true);
       const area=Math.abs(cv.contourArea(approx));
-      if(approx.rows===4 && area>bestArea){ if(best)best.delete(); best=approx; bestArea=area; }
-      else approx.delete();
-      c.delete();
+      if(approx.rows===4 && area>bestArea && cv.isContourConvex(approx)){
+        bestArea=area;
+        bestQuad=[]; for(let k=0;k<4;k++) bestQuad.push({x:approx.data32S[k*2], y:approx.data32S[k*2+1]});
+      }
+      approx.delete(); c.delete();
     }
 
-    let outCanvas;
-    if(best){
-      outCanvas = warp(img, best); // enderezar a rectángulo
-      best.delete();
-    }else{
-      outCanvas = document.createElement('canvas');
-      outCanvas.width=w; outCanvas.height=h;
-      outCanvas.getContext('2d').drawImage(src,0,0,w,h);
-      setStatus('No detecté bordes claros — guardé la imagen completa.');
-    }
+    // si no detecta, usamos las 4 esquinas de la imagen completa (editables a mano)
+    const quad = bestQuad ? orderQuad(bestQuad)
+                          : [{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
 
-    // guardamos el ORIGINAL a color; los filtros se aplican luego en revisión
-    addPage(outCanvas, best ? true : false);
+    // guardamos el CRUDO a color + esquinas; el enderezado se hace al renderizar
+    addPage(work2canvas(work), quad, !!bestQuad);
     img.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hier.delete();
   }catch(e){ setStatus('Error al procesar: '+e.message, true); }
 }
 
-/* corrección de perspectiva a partir de 4 esquinas */
-function warp(img, quad){
-  const pts=[]; for(let i=0;i<4;i++) pts.push({x:quad.data32S[i*2], y:quad.data32S[i*2+1]});
-  pts.sort((a,b)=>a.y-b.y);
-  const top=pts.slice(0,2).sort((a,b)=>a.x-b.x);
-  const bot=pts.slice(2,4).sort((a,b)=>a.x-b.x);
-  const [tl,tr]=top,[bl,br]=bot;
+// copia el canvas de trabajo a uno independiente
+function work2canvas(srcCanvas){
+  const c=document.createElement('canvas'); c.width=srcCanvas.width; c.height=srcCanvas.height;
+  c.getContext('2d').drawImage(srcCanvas,0,0);
+  return c;
+}
+
+// ordena 4 puntos como TL, TR, BR, BL
+function orderQuad(pts){
+  const s=pts.slice().sort((a,b)=>a.y-b.y);
+  const top=s.slice(0,2).sort((a,b)=>a.x-b.x);
+  const bot=s.slice(2,4).sort((a,b)=>a.x-b.x);
+  return [top[0], top[1], bot[1], bot[0]]; // TL,TR,BR,BL
+}
+
+// endereza un canvas crudo usando 4 esquinas (TL,TR,BR,BL) -> nuevo canvas
+function warpCanvas(srcCanvas, quad){
+  if(!(window.cv && cv.imread)) return srcCanvas;
+  let img=cv.imread(srcCanvas);
+  const [tl,tr,br,bl]=quad;
   const dist=(p,q)=>Math.hypot(p.x-q.x,p.y-q.y);
   const W=Math.max(dist(tl,tr),dist(bl,br))|0;
   const H=Math.max(dist(tl,bl),dist(tr,br))|0;
@@ -479,14 +546,15 @@ function warp(img, quad){
   const M=cv.getPerspectiveTransform(srcM,dstM), dst=new cv.Mat();
   cv.warpPerspective(img,dst,M,new cv.Size(W,H));
   const cnv=document.createElement('canvas'); cv.imshow(cnv,dst);
-  srcM.delete();dstM.delete();M.delete();dst.delete();
+  img.delete();srcM.delete();dstM.delete();M.delete();dst.delete();
   return cnv;
 }
 
 /* ---------- filtros de color ---------- */
 // estima el mapa de iluminación y corrige sombras de forma SUAVE,
 // trabajando sobre una versión reducida para no degradar ni tardar
-function deshadow(srcCanvas){
+function deshadow(srcCanvas, intensity){
+  intensity = (intensity==null) ? 0.5 : intensity;
   const W=srcCanvas.width, H=srcCanvas.height;
   // 1) versión pequeña para estimar el fondo (la sombra es de baja frecuencia)
   const sw=Math.max(40, Math.round(W/24)), sh=Math.max(40, Math.round(H/24));
@@ -516,11 +584,13 @@ function deshadow(srcCanvas){
     for(let x=0;x<W;x++){
       const i=(y*W+x)*4;
       let local=sampleBg(x,y); if(local<1) local=1;
-      const gain=maxL/local;              // cuánto subir según la sombra local
-      const g=Math.min(2.2, gain*0.85+0.15); // suavizado: no corrige al 100%
-      p[i]=Math.min(255,p[i]*g);
-      p[i+1]=Math.min(255,p[i+1]*g);
-      p[i+2]=Math.min(255,p[i+2]*g);
+      const gain=maxL/local;
+      // intensidad: 0 = nada, 1 = corrección completa
+      const g=1 + (gain-1)*intensity;
+      const gg=Math.min(1.6, Math.max(0.7, g));
+      p[i]=Math.min(255,p[i]*gg);
+      p[i+1]=Math.min(255,p[i+1]*gg);
+      p[i+2]=Math.min(255,p[i+2]*gg);
     }
   }
   octx.putImageData(d,0,0);
@@ -529,10 +599,12 @@ function deshadow(srcCanvas){
 
 // devuelve un nuevo canvas con el filtro aplicado sobre el canvas original a color
 function applyFilter(srcCanvas, mode){
-  // B/N corrige iluminación primero (sin pixelear, solo para binarizar)
   let base=srcCanvas;
-  if(mode==='byn'){
-    try{ base=deshadow(srcCanvas); }catch(e){ base=srcCanvas; }
+  // Gris: corrección de sombra MUY leve. B/N: leve. Color: nada.
+  if(mode==='gris'){
+    try{ base=deshadow(srcCanvas, 0.35); }catch(e){ base=srcCanvas; }
+  } else if(mode==='byn'){
+    try{ base=deshadow(srcCanvas, 0.55); }catch(e){ base=srcCanvas; }
   }
   const c=document.createElement('canvas');
   c.width=base.width; c.height=base.height;
@@ -546,40 +618,18 @@ function applyFilter(srcCanvas, mode){
   if(mode==='gris'){
     for(let i=0;i<p.length;i+=4){
       let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-      g=(g-128)*1.22+128+6; g=g<0?0:g>255?255:g;
+      g=(g-128)*1.18+128+4; g=g<0?0:g>255?255:g;
       p[i]=p[i+1]=p[i+2]=g;
     }
   } else if(mode==='byn'){
-    // umbral ADAPTATIVO por bloques: cada zona usa su propio promedio local.
-    // da letras más nítidas que un umbral global y conserva resolución.
-    const lum=new Float32Array(W*H);
-    for(let i=0,j=0;i<p.length;i+=4,j++) lum[j]=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-
-    // promedio por bloques (integral image para velocidad)
-    const block=Math.max(16, Math.round(Math.min(W,H)/40)); // tamaño de ventana local
-    const bias=10; // qué tan por debajo del promedio local se considera tinta
-    // suma acumulada (integral)
-    const sat=new Float64Array((W+1)*(H+1));
-    for(let y=1;y<=H;y++){
-      let rs=0;
-      for(let x=1;x<=W;x++){
-        rs+=lum[(y-1)*W+(x-1)];
-        sat[y*(W+1)+x]=sat[(y-1)*(W+1)+x]+rs;
-      }
-    }
-    const half=block>>1;
-    for(let y=0;y<H;y++){
-      const y0=Math.max(0,y-half), y1=Math.min(H-1,y+half);
-      for(let x=0;x<W;x++){
-        const x0=Math.max(0,x-half), x1=Math.min(W-1,x+half);
-        const area=(x1-x0+1)*(y1-y0+1);
-        const sum=sat[(y1+1)*(W+1)+(x1+1)]-sat[(y0)*(W+1)+(x1+1)]
-                 -sat[(y1+1)*(W+1)+(x0)]+sat[(y0)*(W+1)+(x0)];
-        const localMean=sum/area;
-        const i=(y*W+x)*4;
-        const v=(lum[y*W+x] < localMean-bias) ? 0 : 255;
-        p[i]=p[i+1]=p[i+2]=v;
-      }
+    // umbral global suave sobre la imagen ya nivelada (sin pixelear)
+    let sum=0, n=p.length/4;
+    for(let i=0;i<p.length;i+=4) sum+=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
+    const mean=sum/n, thr=mean*0.82;
+    for(let i=0;i<p.length;i+=4){
+      const g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
+      const v=g>thr?255:0;
+      p[i]=p[i+1]=p[i+2]=v;
     }
   }
   ctx.putImageData(d,0,0);
@@ -657,26 +707,33 @@ function showReview(){
 /* ---------- gestión de páginas ---------- */
 let currentFilter='gris'; // filtro por defecto para texto fiscal
 
-// recalcula el dataUrl de una página según su filtro y refresca preview/thumbs
+// recalcula el enderezado y el filtro de una página
 function renderPageFilter(i){
   const pg=pages[i];
-  const filtered=applyFilter(pg.canvas, pg.filter);
+  // 1) enderezar el crudo con las esquinas actuales (cacheado si no cambió)
+  if(!pg.warped || pg.warpDirty){
+    pg.warped = warpCanvas(pg.raw, pg.quad);
+    pg.warpDirty=false;
+  }
+  // 2) aplicar filtro
+  const filtered=applyFilter(pg.warped, pg.filter);
   pg.dataUrl=filtered.toDataURL('image/jpeg',0.95);
   pg.w=filtered.width; pg.h=filtered.height;
 }
 
-function addPage(srcCanvas, enderezada){
-  const pg={canvas:srcCanvas, filter:currentFilter, dataUrl:'', w:0, h:0};
+function addPage(rawCanvas, quad, enderezada){
+  const pg={raw:rawCanvas, quad:quad, warped:null, warpDirty:true,
+            filter:currentFilter, dataUrl:'', w:0, h:0};
   pages.push(pg);
   renderPageFilter(pages.length-1);
   stopLive();
   preview.src=pg.dataUrl;
-  const mp=((srcCanvas.width*srcCanvas.height)/1e6).toFixed(1);
-  $('revBanner').textContent='Página '+pages.length+(enderezada?' · enderezada':'')+' · '+srcCanvas.width+'×'+srcCanvas.height+' ('+mp+' MP)';
+  const mp=((pg.w*pg.h)/1e6).toFixed(1);
+  $('revBanner').textContent='Página '+pages.length+(enderezada?' · auto':' · sin recorte')+' · '+pg.w+'×'+pg.h+' ('+mp+' MP)';
   markFilterButtons(pg.filter);
   renderThumbs();
   showReview();
-  setStatus('Revisa la página. Cambia el filtro si hace falta.');
+  setStatus('Revisa la página. Ajusta esquinas o filtro si hace falta.');
 }
 
 // aplica filtro a la página que se está revisando (la última)
@@ -733,6 +790,78 @@ $('btnMore').onclick=()=>{             // conserva y vuelve a la cámara para ot
   setStatus('Página guardada. Captura la siguiente.');
 };
 $('btnFinish').onclick=()=>{ $('btnPdf').click(); };
+
+/* ---------- editor manual de esquinas ---------- */
+let cornerPts=[], cornerScale=1, dragIdx=-1;
+$('btnCorners').onclick=()=>{
+  if(!pages.length) return;
+  const pg=pages[pages.length-1];
+  const raw=pg.raw;
+  const cv2=$('cornerCanvas'), ctx=cv2.getContext('2d');
+  // dibujar el crudo a tamaño manejable
+  const maxW=520, scale=Math.min(1, maxW/raw.width);
+  cv2.width=raw.width*scale; cv2.height=raw.height*scale;
+  ctx.drawImage(raw,0,0,cv2.width,cv2.height);
+  cornerScale=scale;
+  // esquinas actuales (en coords del crudo) -> a escala del canvas
+  cornerPts=pg.quad.map(p=>({x:p.x*scale, y:p.y*scale}));
+  drawCorners();
+  $('cornerModal').classList.remove('hidden');
+};
+function drawCorners(){
+  const svg=$('cornerSvg');
+  const poly=cornerPts.map(p=>p.x+','+p.y).join(' ');
+  let h='<polygon points="'+poly+'" fill="rgba(25,195,125,0.15)" stroke="#19c37d" stroke-width="2"/>';
+  cornerPts.forEach((p,i)=>{
+    h+='<circle data-i="'+i+'" cx="'+p.x+'" cy="'+p.y+'" r="14" fill="rgba(25,195,125,0.5)" stroke="#fff" stroke-width="2"/>';
+  });
+  svg.innerHTML=h;
+}
+function cornerEventXY(e){
+  const area=$('cornerArea').getBoundingClientRect();
+  const t=e.touches?e.touches[0]:e;
+  const cv2=$('cornerCanvas');
+  const sx=cv2.width/area.width, sy=cv2.height/area.height;
+  return {x:(t.clientX-area.left)*sx, y:(t.clientY-area.top)*sy};
+}
+function startDrag(e){
+  const pos=cornerEventXY(e);
+  let nearest=-1, nd=1e9;
+  cornerPts.forEach((p,i)=>{ const d=Math.hypot(p.x-pos.x,p.y-pos.y); if(d<nd){nd=d;nearest=i;} });
+  if(nd<40){ dragIdx=nearest; e.preventDefault(); }
+}
+function moveDrag(e){
+  if(dragIdx<0) return;
+  e.preventDefault();
+  const pos=cornerEventXY(e);
+  const cv2=$('cornerCanvas');
+  cornerPts[dragIdx]={x:Math.max(0,Math.min(cv2.width,pos.x)), y:Math.max(0,Math.min(cv2.height,pos.y))};
+  drawCorners();
+}
+function endDrag(){ dragIdx=-1; }
+$('cornerArea').addEventListener('touchstart',startDrag,{passive:false});
+$('cornerArea').addEventListener('touchmove',moveDrag,{passive:false});
+$('cornerArea').addEventListener('touchend',endDrag);
+$('cornerArea').addEventListener('mousedown',startDrag);
+$('cornerArea').addEventListener('mousemove',moveDrag);
+$('cornerArea').addEventListener('mouseup',endDrag);
+
+$('cornerCancel').onclick=()=>$('cornerModal').classList.add('hidden');
+$('cornerApply').onclick=()=>{
+  const pg=pages[pages.length-1];
+  // pasar de coords del canvas a coords del crudo, y reordenar
+  pg.quad=orderQuad(cornerPts.map(p=>({x:p.x/cornerScale, y:p.y/cornerScale})));
+  pg.warpDirty=true;
+  $('cornerModal').classList.add('hidden');
+  setStatus('Reaplicando recorte…');
+  setTimeout(()=>{
+    renderPageFilter(pages.length-1);
+    preview.src=pg.dataUrl;
+    renderThumbs();
+    setStatus('Recorte actualizado.');
+  },20);
+};
+
 
 async function restartCamera(){
   // reactiva el video si se detuvo, sin re-pedir permiso si ya hay stream vivo
