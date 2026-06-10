@@ -80,8 +80,9 @@
   .zoom-hint{font-size:11px; color:var(--muted); text-align:center; margin-bottom:12px; letter-spacing:.02em}
   .filters{display:flex; gap:8px; margin-bottom:12px}
   .f-btn{
-    flex:1; padding:9px; border:1px solid var(--line); background:#fff; border-radius:3px;
-    font-size:12px; font-weight:600; letter-spacing:.04em; cursor:pointer; color:var(--muted);
+    flex:1; padding:9px 4px; border:1px solid var(--line); background:#fff; border-radius:3px;
+    font-size:11px; font-weight:600; letter-spacing:.02em; cursor:pointer; color:var(--muted);
+    white-space:nowrap;
   }
   .f-btn.f-active{background:var(--ink); color:var(--paper); border-color:var(--ink)}
   #btnFlash{flex:0 0 110px; min-width:0}
@@ -189,6 +190,7 @@
     <div class="zoom-hint">Pellizca o doble-toca la imagen para acercar · arrastra para mover</div>
     <div class="filters">
       <button class="f-btn" id="f-color">Color</button>
+      <button class="f-btn" id="f-nosombra">Sin sombra</button>
       <button class="f-btn f-active" id="f-gris">Gris</button>
       <button class="f-btn" id="f-byn">B/N texto</button>
     </div>
@@ -469,13 +471,61 @@ function warp(img, quad){
 }
 
 /* ---------- filtros de color ---------- */
+// estima el mapa de iluminación y corrige sombras de forma SUAVE,
+// trabajando sobre una versión reducida para no degradar ni tardar
+function deshadow(srcCanvas){
+  const W=srcCanvas.width, H=srcCanvas.height;
+  // 1) versión pequeña para estimar el fondo (la sombra es de baja frecuencia)
+  const sw=Math.max(40, Math.round(W/24)), sh=Math.max(40, Math.round(H/24));
+  const small=document.createElement('canvas'); small.width=sw; small.height=sh;
+  const sctx=small.getContext('2d');
+  sctx.drawImage(srcCanvas,0,0,sw,sh);
+  const bg=sctx.getImageData(0,0,sw,sh).data;
+
+  // 2) sacar el brillo máximo del fondo (lo que debería ser "blanco de hoja")
+  let maxL=1;
+  for(let i=0;i<bg.length;i+=4){
+    const l=0.299*bg[i]+0.587*bg[i+1]+0.114*bg[i+2];
+    if(l>maxL) maxL=l;
+  }
+
+  // 3) aplicar corrección sobre la imagen full: cada pixel se divide
+  //    entre su iluminación local (interpolada del mapa pequeño) y se reescala
+  const out=document.createElement('canvas'); out.width=W; out.height=H;
+  const octx=out.getContext('2d'); octx.drawImage(srcCanvas,0,0);
+  const d=octx.getImageData(0,0,W,H), p=d.data;
+  const sampleBg=(x,y)=>{
+    const bx=Math.min(sw-1, Math.floor(x/W*sw)), by=Math.min(sh-1, Math.floor(y/H*sh));
+    const idx=(by*sw+bx)*4;
+    return 0.299*bg[idx]+0.587*bg[idx+1]+0.114*bg[idx+2];
+  };
+  for(let y=0;y<H;y++){
+    for(let x=0;x<W;x++){
+      const i=(y*W+x)*4;
+      let local=sampleBg(x,y); if(local<1) local=1;
+      const gain=maxL/local;              // cuánto subir según la sombra local
+      const g=Math.min(2.2, gain*0.85+0.15); // suavizado: no corrige al 100%
+      p[i]=Math.min(255,p[i]*g);
+      p[i+1]=Math.min(255,p[i+1]*g);
+      p[i+2]=Math.min(255,p[i+2]*g);
+    }
+  }
+  octx.putImageData(d,0,0);
+  return out;
+}
+
 // devuelve un nuevo canvas con el filtro aplicado sobre el canvas original a color
 function applyFilter(srcCanvas, mode){
+  // modos con quita-sombra: empezamos corrigiendo iluminación
+  let base=srcCanvas;
+  if(mode==='nosombra' || mode==='byn'){
+    try{ base=deshadow(srcCanvas); }catch(e){ base=srcCanvas; }
+  }
   const c=document.createElement('canvas');
-  c.width=srcCanvas.width; c.height=srcCanvas.height;
+  c.width=base.width; c.height=base.height;
   const ctx=c.getContext('2d');
-  ctx.drawImage(srcCanvas,0,0);
-  if(mode==='color') return c;
+  ctx.drawImage(base,0,0);
+  if(mode==='color' || mode==='nosombra') return c;
 
   const d=ctx.getImageData(0,0,c.width,c.height), p=d.data;
   if(mode==='gris'){
@@ -485,10 +535,10 @@ function applyFilter(srcCanvas, mode){
       p[i]=p[i+1]=p[i+2]=g;
     }
   } else if(mode==='byn'){
-    // primero promedio global para ubicar el punto de corte, luego binariza suave
+    // tras quitar sombra, el umbral global ya funciona limpio
     let sum=0, n=p.length/4;
     for(let i=0;i<p.length;i+=4) sum+=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-    const mean=sum/n, thr=mean*0.82; // umbral relativo al brillo de la hoja
+    const mean=sum/n, thr=mean*0.80;
     for(let i=0;i<p.length;i+=4){
       const g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
       const v=g>thr?255:0;
@@ -597,11 +647,11 @@ function setReviewFilter(mode){
   renderThumbs();
 }
 function markFilterButtons(mode){
-  ['color','gris','byn'].forEach(m=>{
+  ['color','nosombra','gris','byn'].forEach(m=>{
     const b=$('f-'+m); if(b) b.classList.toggle('f-active', m===mode);
   });
 }
-['color','gris','byn'].forEach(m=>{
+['color','nosombra','gris','byn'].forEach(m=>{
   const b=$('f-'+m); if(b) b.onclick=()=>setReviewFilter(m);
 });
 
