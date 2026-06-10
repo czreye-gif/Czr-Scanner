@@ -70,6 +70,12 @@
     padding:10px; display:flex; justify-content:center; margin-bottom:12px;
   }
   .rev-stage img{max-width:100%; max-height:58vh; box-shadow:0 2px 14px rgba(0,0,0,.18); background:#fff}
+  .filters{display:flex; gap:8px; margin-bottom:12px}
+  .f-btn{
+    flex:1; padding:9px; border:1px solid var(--line); background:#fff; border-radius:3px;
+    font-size:12px; font-weight:600; letter-spacing:.04em; cursor:pointer; color:var(--muted);
+  }
+  .f-btn.f-active{background:var(--ink); color:var(--paper); border-color:var(--ink)}
   .stage .ph{color:#777; font-size:13px; padding:40px 24px; text-align:center}
 
   .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
@@ -151,6 +157,9 @@
     </div>
 
     <label class="toggle">
+      <input type="checkbox" id="auto" checked> Autocaptura — dispara solo cuando el documento está quieto
+    </label>
+    <label class="toggle">
       <input type="checkbox" id="ocr"> Reconocer texto (OCR) — hace el PDF buscable, tarda más
     </label>
 
@@ -165,6 +174,11 @@
     <div class="rev-banner" id="revBanner">Página 1 lista</div>
     <div class="rev-stage">
       <img id="preview" alt="Página capturada">
+    </div>
+    <div class="filters">
+      <button class="f-btn" id="f-color">Color</button>
+      <button class="f-btn f-active" id="f-gris">Gris</button>
+      <button class="f-btn" id="f-byn">B/N texto</button>
     </div>
     <div class="row">
       <button class="b-ghost" id="btnRetake">↺ Rehacer</button>
@@ -274,13 +288,35 @@ function startLive(){
     octx.clearRect(0,0,ov.width,ov.height);
     if(quad){
       lastQuad=quad;
+      const stable=isStable(quad);
+      const col=stable ? '#19c37d' : '#e0a23c'; // verde estable / ámbar moviéndose
       octx.beginPath();
       quad.forEach((p,i)=>{ const x=p.x*r,y=p.y*r; i?octx.lineTo(x,y):octx.moveTo(x,y); });
       octx.closePath();
-      octx.strokeStyle='#19c37d'; octx.lineWidth=3; octx.stroke();
-      octx.fillStyle='rgba(25,195,125,0.14)'; octx.fill();
-    } else lastQuad=null;
+      octx.strokeStyle=col; octx.lineWidth=3; octx.stroke();
+      octx.fillStyle=stable?'rgba(25,195,125,0.16)':'rgba(224,162,60,0.12)'; octx.fill();
+
+      // ---- autocaptura ----
+      if($('auto').checked && stable){
+        stableCount++;
+        if(stableCount===2) setStatus('Documento estable… capturando.');
+        if(stableCount>=3){ // ~3 ciclos quieto ≈ 1 s
+          stableCount=0; prevQuad=null;
+          $('btnShot').click();
+        }
+      } else stableCount=0;
+    } else { lastQuad=null; stableCount=0; }
   }, 350);
+}
+
+/* mide si el cuadrilátero casi no se movió respecto al frame anterior */
+let prevQuad=null, stableCount=0;
+function isStable(quad){
+  if(!prevQuad){ prevQuad=quad; return false; }
+  let move=0;
+  for(let i=0;i<4;i++) move+=Math.hypot(quad[i].x-prevQuad[i].x, quad[i].y-prevQuad[i].y);
+  prevQuad=quad;
+  return move < 40; // umbral de movimiento total en px (sobre frame full)
 }
 
 /* detección ligera sobre frame reducido (rápida para el bucle) */
@@ -311,7 +347,7 @@ function detectQuadLive(){
   return quad;
 }
 
-function stopLive(){ if(liveTimer){clearInterval(liveTimer); liveTimer=null;} $('overlay').classList.add('hidden'); }
+function stopLive(){ if(liveTimer){clearInterval(liveTimer); liveTimer=null;} prevQuad=null; stableCount=0; $('overlay').classList.add('hidden'); }
 
 /* ---------- subir archivo ---------- */
 $('btnFile').onclick = ()=> $('file').click();
@@ -368,12 +404,9 @@ async function processSource(src, w, h){
       setStatus('No detecté bordes claros — guardé la imagen completa.');
     }
 
-    // realce tipo "documento": gris + contraste
-    enhance(outCanvas);
-
-    addPage(outCanvas.toDataURL('image/jpeg',0.85), outCanvas.width, outCanvas.height);
+    // guardamos el ORIGINAL a color; los filtros se aplican luego en revisión
+    addPage(outCanvas, best ? true : false);
     img.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hier.delete();
-    setStatus(best?'Página capturada y enderezada.':'Página capturada.');
   }catch(e){ setStatus('Error al procesar: '+e.message, true); }
 }
 
@@ -396,15 +429,32 @@ function warp(img, quad){
   return cnv;
 }
 
-/* realce de legibilidad */
-function enhance(cnv){
-  const ctx=cnv.getContext('2d'), d=ctx.getImageData(0,0,cnv.width,cnv.height), p=d.data;
-  for(let i=0;i<p.length;i+=4){
-    let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-    g=(g-128)*1.25+128+8; g=g<0?0:g>255?255:g; // contraste + brillo leve
-    p[i]=p[i+1]=p[i+2]=g;
+/* ---------- filtros de color ---------- */
+// devuelve un nuevo canvas con el filtro aplicado sobre el canvas original a color
+function applyFilter(srcCanvas, mode){
+  const c=document.createElement('canvas');
+  c.width=srcCanvas.width; c.height=srcCanvas.height;
+  const ctx=c.getContext('2d');
+  ctx.drawImage(srcCanvas,0,0);
+  if(mode==='color') return c;
+  const d=ctx.getImageData(0,0,c.width,c.height), p=d.data;
+  if(mode==='gris'){
+    for(let i=0;i<p.length;i+=4){
+      let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
+      g=(g-128)*1.25+128+8; g=g<0?0:g>255?255:g;
+      p[i]=p[i+1]=p[i+2]=g;
+    }
+  } else if(mode==='byn'){
+    // umbral adaptativo simple por promedio local aproximado (alto contraste para texto)
+    for(let i=0;i<p.length;i+=4){
+      let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
+      g=(g-128)*1.9+138; // empuja fuerte el contraste
+      const v=g>150?255:(g<90?0:(g>128?255:0));
+      p[i]=p[i+1]=p[i+2]=v;
+    }
   }
   ctx.putImageData(d,0,0);
+  return c;
 }
 
 /* ---------- cambio de vistas ---------- */
@@ -418,15 +468,47 @@ function showReview(){
 }
 
 /* ---------- gestión de páginas ---------- */
-function addPage(dataUrl,w,h){
-  pages.push({dataUrl,w,h});
+let currentFilter='gris'; // filtro por defecto para texto fiscal
+
+// recalcula el dataUrl de una página según su filtro y refresca preview/thumbs
+function renderPageFilter(i){
+  const pg=pages[i];
+  const filtered=applyFilter(pg.canvas, pg.filter);
+  pg.dataUrl=filtered.toDataURL('image/jpeg',0.85);
+  pg.w=filtered.width; pg.h=filtered.height;
+}
+
+function addPage(srcCanvas, enderezada){
+  const pg={canvas:srcCanvas, filter:currentFilter, dataUrl:'', w:0, h:0};
+  pages.push(pg);
+  renderPageFilter(pages.length-1);
   stopLive();
-  // detener video para liberar la cámara mientras revisas
-  preview.src=dataUrl;
-  $('revBanner').textContent='Página '+pages.length+' lista';
+  preview.src=pg.dataUrl;
+  $('revBanner').textContent='Página '+pages.length+(enderezada?' · enderezada':'');
+  markFilterButtons(pg.filter);
   renderThumbs();
   showReview();
+  setStatus('Revisa la página. Cambia el filtro si hace falta.');
 }
+
+// aplica filtro a la página que se está revisando (la última)
+function setReviewFilter(mode){
+  if(!pages.length) return;
+  const i=pages.length-1;
+  pages[i].filter=mode; currentFilter=mode;
+  renderPageFilter(i);
+  preview.src=pages[i].dataUrl;
+  markFilterButtons(mode);
+  renderThumbs();
+}
+function markFilterButtons(mode){
+  ['color','gris','byn'].forEach(m=>{
+    const b=$('f-'+m); if(b) b.classList.toggle('f-active', m===mode);
+  });
+}
+['color','gris','byn'].forEach(m=>{
+  const b=$('f-'+m); if(b) b.onclick=()=>setReviewFilter(m);
+});
 
 function renderThumbs(){
   $('count').textContent=pages.length;
