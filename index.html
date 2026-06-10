@@ -67,15 +67,22 @@
   }
   .rev-stage{
     border:1px solid var(--line); border-radius:4px; background:#f0ede4;
-    padding:10px; display:flex; justify-content:center; margin-bottom:12px;
+    padding:12px; display:flex; justify-content:center; align-items:center;
+    margin-bottom:12px; min-height:50vh;
   }
-  .rev-stage img{max-width:100%; max-height:58vh; box-shadow:0 2px 14px rgba(0,0,0,.18); background:#fff}
+  .rev-stage img{
+    display:block; max-width:100%; max-height:62vh; width:auto; height:auto;
+    box-shadow:0 2px 18px rgba(0,0,0,.22); background:#fff;
+  }
+  .rev-stage img.hidden{display:block}
   .filters{display:flex; gap:8px; margin-bottom:12px}
   .f-btn{
     flex:1; padding:9px; border:1px solid var(--line); background:#fff; border-radius:3px;
     font-size:12px; font-weight:600; letter-spacing:.04em; cursor:pointer; color:var(--muted);
   }
   .f-btn.f-active{background:var(--ink); color:var(--paper); border-color:var(--ink)}
+  #btnFlash{flex:0 0 110px; min-width:0}
+  #btnFlash.f-active{background:var(--sello); color:#fff; border-color:var(--sello)}
   .stage .ph{color:#777; font-size:13px; padding:40px 24px; text-align:center}
 
   .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
@@ -154,6 +161,7 @@
     </div>
     <div class="row">
       <button class="b-primary" id="btnShot" disabled>Capturar página</button>
+      <button class="b-ghost" id="btnFlash" disabled>🔦 Flash</button>
     </div>
 
     <label class="toggle">
@@ -254,10 +262,11 @@ $('btnCam').onclick = async ()=>{
       video:{facingMode:'environment'}, audio:false
     });
     video.srcObject = stream; await video.play();
-    ph.classList.add('hidden'); preview.classList.add('hidden');
+    ph.classList.add('hidden');
     video.classList.remove('hidden');
     $('overlay').classList.remove('hidden');
     $('btnShot').disabled=false;
+    setupTorch();
     setStatus('Cámara lista. Cargando guía de bordes…');
     loadCV().then(startLive).catch(()=> setStatus('Cámara lista (sin guía en vivo). Igual puedes capturar.'));
   }catch(e){ setStatus('No se pudo abrir la cámara. Usa "Subir foto".', true); }
@@ -349,6 +358,29 @@ function detectQuadLive(){
 
 function stopLive(){ if(liveTimer){clearInterval(liveTimer); liveTimer=null;} prevQuad=null; stableCount=0; $('overlay').classList.add('hidden'); }
 
+/* ---------- flash / linterna ---------- */
+let torchOn=false;
+function setupTorch(){
+  const track=stream && stream.getVideoTracks()[0];
+  const caps=track && track.getCapabilities ? track.getCapabilities() : {};
+  if(caps && caps.torch){
+    $('btnFlash').disabled=false;
+  } else {
+    $('btnFlash').disabled=true;
+    $('btnFlash').title='Tu dispositivo/navegador no permite controlar el flash aquí';
+  }
+}
+$('btnFlash').onclick=async ()=>{
+  const track=stream && stream.getVideoTracks()[0];
+  if(!track) return;
+  try{
+    torchOn=!torchOn;
+    await track.applyConstraints({advanced:[{torch:torchOn}]});
+    $('btnFlash').classList.toggle('f-active', torchOn);
+    $('btnFlash').textContent = torchOn ? '🔦 Flash on' : '🔦 Flash';
+  }catch(e){ setStatus('No se pudo cambiar el flash en este equipo.', true); }
+};
+
 /* ---------- subir archivo ---------- */
 $('btnFile').onclick = ()=> $('file').click();
 $('file').onchange = (e)=>{
@@ -432,11 +464,52 @@ function warp(img, quad){
 /* ---------- filtros de color ---------- */
 // devuelve un nuevo canvas con el filtro aplicado sobre el canvas original a color
 function applyFilter(srcCanvas, mode){
+  if(mode==='color'){
+    const c=document.createElement('canvas');
+    c.width=srcCanvas.width; c.height=srcCanvas.height;
+    c.getContext('2d').drawImage(srcCanvas,0,0);
+    return c;
+  }
+  // gris y byn usan OpenCV para quitar sombra (normalización de fondo)
+  if(window.cv && cv.imread){
+    try{ return cvFilter(srcCanvas, mode); }
+    catch(e){ /* si falla cv, cae al método simple */ }
+  }
+  return simpleFilter(srcCanvas, mode);
+}
+
+// quita sombra dividiendo entre el fondo desenfocado, luego gris o binariza
+function cvFilter(srcCanvas, mode){
+  let src=cv.imread(srcCanvas), gray=new cv.Mat();
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+
+  // estimar iluminación de fondo con desenfoque grande y dividir => quita sombras
+  let bg=new cv.Mat(), norm=new cv.Mat();
+  let k=Math.max(31, (Math.min(gray.cols,gray.rows)/8|0)|1); // kernel impar grande
+  cv.medianBlur(gray, bg, k>101?101:k);
+  // norm = gray / bg * 255  (corrige iluminación dispareja)
+  gray.convertTo(gray, cv.CV_32F);
+  bg.convertTo(bg, cv.CV_32F);
+  cv.divide(gray, bg, norm, 255);
+  norm.convertTo(norm, cv.CV_8U);
+
+  let out=new cv.Mat();
+  if(mode==='gris'){
+    // leve contraste extra
+    norm.convertTo(out, cv.CV_8U, 1.15, -10);
+  } else { // byn: umbral adaptativo (ideal para texto con sombras)
+    cv.adaptiveThreshold(norm, out, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 25, 12);
+  }
+  const cnv=document.createElement('canvas'); cv.imshow(cnv, out);
+  src.delete(); gray.delete(); bg.delete(); norm.delete(); out.delete();
+  return cnv;
+}
+
+// respaldo sin OpenCV
+function simpleFilter(srcCanvas, mode){
   const c=document.createElement('canvas');
   c.width=srcCanvas.width; c.height=srcCanvas.height;
-  const ctx=c.getContext('2d');
-  ctx.drawImage(srcCanvas,0,0);
-  if(mode==='color') return c;
+  const ctx=c.getContext('2d'); ctx.drawImage(srcCanvas,0,0);
   const d=ctx.getImageData(0,0,c.width,c.height), p=d.data;
   if(mode==='gris'){
     for(let i=0;i<p.length;i+=4){
@@ -444,12 +517,10 @@ function applyFilter(srcCanvas, mode){
       g=(g-128)*1.25+128+8; g=g<0?0:g>255?255:g;
       p[i]=p[i+1]=p[i+2]=g;
     }
-  } else if(mode==='byn'){
-    // umbral adaptativo simple por promedio local aproximado (alto contraste para texto)
+  } else {
     for(let i=0;i<p.length;i+=4){
       let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-      g=(g-128)*1.9+138; // empuja fuerte el contraste
-      const v=g>150?255:(g<90?0:(g>128?255:0));
+      g=(g-128)*1.9+138; const v=g>128?255:0;
       p[i]=p[i+1]=p[i+2]=v;
     }
   }
@@ -550,6 +621,7 @@ async function restartCamera(){
     video.srcObject=stream; await video.play();
     video.classList.remove('hidden'); $('overlay').classList.remove('hidden'); ph.classList.add('hidden');
     $('btnShot').disabled=false;
+    setupTorch();
     loadCV().then(startLive).catch(()=>{});
   }catch(e){ setStatus('Reactiva la cámara con el botón.', true); }
 }
