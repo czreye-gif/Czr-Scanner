@@ -312,7 +312,7 @@ $('btnCam').onclick = async ()=>{
     stream = await navigator.mediaDevices.getUserMedia({
       video:{
         facingMode:'environment',
-        width:{ideal:3840}, height:{ideal:2160}  // pide 4K; el equipo da lo máximo que pueda
+        width:{ideal:2160}, height:{ideal:3840}  // vertical: llena la pantalla, sin franjas
       }, audio:false
     });
     video.srcObject = stream; await video.play();
@@ -861,7 +861,7 @@ async function restartCamera(){
   try{
     if(!stream || !stream.active){
       stream=await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:'environment', width:{ideal:3840}, height:{ideal:2160}}, audio:false
+        video:{facingMode:'environment', width:{ideal:2160}, height:{ideal:3840}}, audio:false
       });
     }
     video.srcObject=stream; await video.play();
