@@ -263,7 +263,10 @@ let liveTimer=null, lastQuad=null;
 $('btnCam').onclick = async ()=>{
   try{
     stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:'environment'}, audio:false
+      video:{
+        facingMode:'environment',
+        width:{ideal:3840}, height:{ideal:2160}  // pide 4K; el equipo da lo máximo que pueda
+      }, audio:false
     });
     video.srcObject = stream; await video.play();
     ph.classList.add('hidden');
@@ -565,7 +568,7 @@ let currentFilter='gris'; // filtro por defecto para texto fiscal
 function renderPageFilter(i){
   const pg=pages[i];
   const filtered=applyFilter(pg.canvas, pg.filter);
-  pg.dataUrl=filtered.toDataURL('image/jpeg',0.85);
+  pg.dataUrl=filtered.toDataURL('image/jpeg',0.95);
   pg.w=filtered.width; pg.h=filtered.height;
 }
 
@@ -575,7 +578,8 @@ function addPage(srcCanvas, enderezada){
   renderPageFilter(pages.length-1);
   stopLive();
   preview.src=pg.dataUrl;
-  $('revBanner').textContent='Página '+pages.length+(enderezada?' · enderezada':'');
+  const mp=((srcCanvas.width*srcCanvas.height)/1e6).toFixed(1);
+  $('revBanner').textContent='Página '+pages.length+(enderezada?' · enderezada':'')+' · '+srcCanvas.width+'×'+srcCanvas.height+' ('+mp+' MP)';
   markFilterButtons(pg.filter);
   renderThumbs();
   showReview();
@@ -636,7 +640,9 @@ async function restartCamera(){
   // reactiva el video si se detuvo, sin re-pedir permiso si ya hay stream vivo
   try{
     if(!stream || !stream.active){
-      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+      stream=await navigator.mediaDevices.getUserMedia({
+        video:{facingMode:'environment', width:{ideal:3840}, height:{ideal:2160}}, audio:false
+      });
     }
     video.srcObject=stream; await video.play();
     video.classList.remove('hidden'); $('overlay').classList.remove('hidden'); ph.classList.add('hidden');
