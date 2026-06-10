@@ -55,7 +55,8 @@
     width:100%; min-height:120px;
   }
   .stage.live{min-height:72vh}
-  .stage video,.stage img{display:block; width:100%; height:auto; max-height:78vh; object-fit:contain}
+  .stage video{display:block; width:100%; height:72vh; object-fit:cover}
+  .stage img{display:block; width:100%; height:auto; max-height:78vh; object-fit:contain}
   .stage #work{display:none}
   .stage .ph{color:#aaa; font-size:13px; padding:36px 24px; text-align:center}
   #overlay{position:absolute; pointer-events:none}
@@ -335,27 +336,29 @@ function startLive(){
   liveTimer=setInterval(()=>{
     if(video.classList.contains('hidden')||!video.videoWidth) return;
 
-    // rectángulo REAL que ocupa el frame dentro del elemento <video> (object-fit:contain)
+    // object-fit:cover -> el video llena el elemento y RECORTA lo que sobra
     const vw=video.videoWidth, vh=video.videoHeight;
     const ew=video.clientWidth, eh=video.clientHeight;
-    const r=Math.min(ew/vw, eh/vh);          // escala de contain
-    const dw=vw*r, dh=vh*r;                   // tamaño pintado
-    const offX=(ew-dw)/2, offY=(eh-dh)/2;     // franjas (letterbox)
+    const r=Math.max(ew/vw, eh/vh);          // escala de cover
+    const dw=vw*r, dh=vh*r;                   // tamaño pintado (mayor que el elemento)
+    const offX=(ew-dw)/2, offY=(eh-dh)/2;     // recorte (negativos)
 
-    // colocar y dimensionar el overlay justo sobre el área pintada
-    ov.style.left=(video.offsetLeft+offX)+'px';
-    ov.style.top=(video.offsetTop+offY)+'px';
-    ov.style.width=dw+'px'; ov.style.height=dh+'px';
-    ov.width=dw; ov.height=dh;
+    // overlay del tamaño del ELEMENTO visible (no del video completo)
+    ov.style.left=video.offsetLeft+'px';
+    ov.style.top=video.offsetTop+'px';
+    ov.style.width=ew+'px'; ov.style.height=eh+'px';
+    ov.width=ew; ov.height=eh;
 
     const quad=detectQuadLive();
     octx.clearRect(0,0,ov.width,ov.height);
     if(quad){
       lastQuad=quad;
       const stable=isStable(quad);
-      const col=stable ? '#19c37d' : '#e0a23c'; // verde estable / ámbar moviéndose
+      const col=stable ? '#19c37d' : '#e0a23c';
+      // mapear coords del video (full) a pantalla considerando el recorte de cover
+      const mapX=x=>x*r+offX, mapY=y=>y*r+offY;
       octx.beginPath();
-      quad.forEach((p,i)=>{ const x=p.x*r,y=p.y*r; i?octx.lineTo(x,y):octx.moveTo(x,y); });
+      quad.forEach((p,i)=>{ const x=mapX(p.x),y=mapY(p.y); i?octx.lineTo(x,y):octx.moveTo(x,y); });
       octx.closePath();
       octx.strokeStyle=col; octx.lineWidth=3; octx.stroke();
       octx.fillStyle=stable?'rgba(25,195,125,0.16)':'rgba(224,162,60,0.12)'; octx.fill();
