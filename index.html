@@ -50,12 +50,13 @@
 
   .stage{
     border:1px solid var(--line); border-radius:4px; background:#000;
-    max-height:60vh; margin:0 auto; overflow:hidden;
-    display:flex; align-items:center; justify-content:center; position:relative;
+    margin:0 auto; overflow:hidden; position:relative;
+    display:flex; align-items:center; justify-content:center;
+    width:100%;
   }
-  .stage video,.stage img{width:100%; height:auto; max-height:60vh; object-fit:contain; display:block}
+  .stage video,.stage img{display:block; width:100%; height:auto; max-height:64vh; object-fit:contain}
   .stage #work{display:none}
-  #overlay{position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none}
+  #overlay{position:absolute; pointer-events:none}
   .stage .ph{color:#777; font-size:13px; padding:40px 24px; text-align:center}
 
   .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
@@ -202,7 +203,7 @@ let liveTimer=null, lastQuad=null;
 $('btnCam').onclick = async ()=>{
   try{
     stream = await navigator.mediaDevices.getUserMedia({
-      video:{facingMode:'environment', width:{ideal:1920}, height:{ideal:1080}}
+      video:{facingMode:'environment'}, audio:false
     });
     video.srcObject = stream; await video.play();
     ph.classList.add('hidden'); preview.classList.add('hidden');
@@ -221,17 +222,29 @@ function startLive(){
   if(liveTimer) clearInterval(liveTimer);
   liveTimer=setInterval(()=>{
     if(video.classList.contains('hidden')||!video.videoWidth) return;
-    ov.width=video.clientWidth; ov.height=video.clientHeight;
+
+    // rectángulo REAL que ocupa el frame dentro del elemento <video> (object-fit:contain)
+    const vw=video.videoWidth, vh=video.videoHeight;
+    const ew=video.clientWidth, eh=video.clientHeight;
+    const r=Math.min(ew/vw, eh/vh);          // escala de contain
+    const dw=vw*r, dh=vh*r;                   // tamaño pintado
+    const offX=(ew-dw)/2, offY=(eh-dh)/2;     // franjas (letterbox)
+
+    // colocar y dimensionar el overlay justo sobre el área pintada
+    ov.style.left=(video.offsetLeft+offX)+'px';
+    ov.style.top=(video.offsetTop+offY)+'px';
+    ov.style.width=dw+'px'; ov.style.height=dh+'px';
+    ov.width=dw; ov.height=dh;
+
     const quad=detectQuadLive();
     octx.clearRect(0,0,ov.width,ov.height);
     if(quad){
       lastQuad=quad;
-      const sx=ov.width/video.videoWidth, sy=ov.height/video.videoHeight;
       octx.beginPath();
-      quad.forEach((p,i)=>{ const x=p.x*sx,y=p.y*sy; i?octx.lineTo(x,y):octx.moveTo(x,y); });
+      quad.forEach((p,i)=>{ const x=p.x*r,y=p.y*r; i?octx.lineTo(x,y):octx.moveTo(x,y); });
       octx.closePath();
-      octx.strokeStyle='#1f5c4d'; octx.lineWidth=3; octx.stroke();
-      octx.fillStyle='rgba(31,92,77,0.12)'; octx.fill();
+      octx.strokeStyle='#19c37d'; octx.lineWidth=3; octx.stroke();
+      octx.fillStyle='rgba(25,195,125,0.14)'; octx.fill();
     } else lastQuad=null;
   }, 350);
 }
