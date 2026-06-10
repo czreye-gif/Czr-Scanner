@@ -442,41 +442,11 @@ $('file').onchange = (e)=>{
 };
 
 /* ---------- capturar de la cámara ---------- */
-$('btnShot').onclick = async ()=>{
+$('btnShot').onclick = ()=>{
   if(video.classList.contains('hidden')) return;
   stopLive();
-  const w=video.videoWidth, h=video.videoHeight;
-  setStatus('Capturando…');
-  // ---- multi-frame: promedia 3 tomas para reducir ruido y ganar definición ----
-  const merged=await captureMultiFrame(w, h, 3);
-  processSource(merged, w, h);
+  processSource(video, video.videoWidth, video.videoHeight);
 };
-
-// captura N frames consecutivos y los promedia en un canvas
-function captureMultiFrame(w, h, n){
-  return new Promise((resolve)=>{
-    const acc=new Float32Array(w*h*4);
-    let count=0;
-    const tmp=document.createElement('canvas'); tmp.width=w; tmp.height=h;
-    const tctx=tmp.getContext('2d');
-    const grab=()=>{
-      tctx.drawImage(video,0,0,w,h);
-      const d=tctx.getImageData(0,0,w,h).data;
-      for(let i=0;i<d.length;i++) acc[i]+=d[i];
-      count++;
-      if(count<n){ requestAnimationFrame(grab); }
-      else {
-        const out=document.createElement('canvas'); out.width=w; out.height=h;
-        const octx=out.getContext('2d');
-        const od=octx.createImageData(w,h), op=od.data;
-        for(let i=0;i<op.length;i++) op[i]=acc[i]/n;
-        octx.putImageData(od,0,0);
-        resolve(out);
-      }
-    };
-    grab();
-  });
-}
 
 /* ---------- pipeline: detectar bordes + enderezar + limpiar ---------- */
 async function processSource(src, w, h){
