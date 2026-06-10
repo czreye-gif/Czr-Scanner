@@ -657,10 +657,10 @@ function applyFilter(srcCanvas, mode){
       p[i]=p[i+1]=p[i+2]=g;
     }
   } else if(mode==='byn'){
-    // umbral global suave sobre la imagen ya nivelada (sin pixelear)
+    // umbral global sobre la imagen ya nivelada
     let sum=0, n=p.length/4;
     for(let i=0;i<p.length;i+=4) sum+=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-    const mean=sum/n, thr=mean*0.82;
+    const mean=sum/n, thr=mean*0.90; // más alto = más píxeles caen a negro (letras más marcadas)
     for(let i=0;i<p.length;i+=4){
       const g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
       const v=g>thr?255:0;
