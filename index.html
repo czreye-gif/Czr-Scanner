@@ -57,6 +57,19 @@
   .stage video,.stage img{display:block; width:100%; height:auto; max-height:64vh; object-fit:contain}
   .stage #work{display:none}
   #overlay{position:absolute; pointer-events:none}
+
+  /* ---- vista revisión ---- */
+  .rev-banner{
+    font-family:"SF Mono",ui-monospace,monospace; font-size:12px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--sello); background:var(--sello-soft);
+    border:1px solid var(--sello); border-radius:3px; padding:8px 12px; margin-bottom:12px;
+    text-align:center;
+  }
+  .rev-stage{
+    border:1px solid var(--line); border-radius:4px; background:#f0ede4;
+    padding:10px; display:flex; justify-content:center; margin-bottom:12px;
+  }
+  .rev-stage img{max-width:100%; max-height:58vh; box-shadow:0 2px 14px rgba(0,0,0,.18); background:#fff}
   .stage .ph{color:#777; font-size:13px; padding:40px 24px; text-align:center}
 
   .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
@@ -119,33 +132,54 @@
     <input type="text" id="rfc" placeholder="XAXX010101000" maxlength="13" autocomplete="off">
   </div>
 
-  <div class="stage" id="stage">
-    <span class="ph" id="ph">Activa la cámara o sube una foto del documento.</span>
-    <video id="video" class="hidden" playsinline></video>
-    <canvas id="overlay" class="hidden"></canvas>
-    <canvas id="work" class="hidden"></canvas>
-    <img id="preview" class="hidden" alt="">
-  </div>
+  <!-- ===== VISTA CÁMARA ===== -->
+  <section id="viewCam">
+    <div class="stage" id="stage">
+      <span class="ph" id="ph">Activa la cámara o sube una foto del documento.</span>
+      <video id="video" class="hidden" playsinline></video>
+      <canvas id="overlay" class="hidden"></canvas>
+      <canvas id="work" class="hidden"></canvas>
+    </div>
 
-  <div class="row">
-    <button class="b-sello" id="btnCam">Activar cámara</button>
-    <button class="b-ghost" id="btnFile">Subir foto</button>
-    <input type="file" id="file" accept="image/*" class="hidden">
-  </div>
-  <div class="row">
-    <button class="b-primary" id="btnShot" disabled>Capturar página</button>
-  </div>
+    <div class="row">
+      <button class="b-sello" id="btnCam">Activar cámara</button>
+      <button class="b-ghost" id="btnFile">Subir foto</button>
+      <input type="file" id="file" accept="image/*" class="hidden">
+    </div>
+    <div class="row">
+      <button class="b-primary" id="btnShot" disabled>Capturar página</button>
+    </div>
 
-  <label class="toggle">
-    <input type="checkbox" id="ocr"> Reconocer texto (OCR) — hace el PDF buscable, tarda más
-  </label>
+    <label class="toggle">
+      <input type="checkbox" id="ocr"> Reconocer texto (OCR) — hace el PDF buscable, tarda más
+    </label>
+
+    <div class="pages hidden" id="pagesBox">
+      <h2><span>Páginas capturadas</span><span id="count">0</span></h2>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+  </section>
+
+  <!-- ===== VISTA REVISIÓN ===== -->
+  <section id="viewReview" class="hidden">
+    <div class="rev-banner" id="revBanner">Página 1 lista</div>
+    <div class="rev-stage">
+      <img id="preview" alt="Página capturada">
+    </div>
+    <div class="row">
+      <button class="b-ghost" id="btnRetake">↺ Rehacer</button>
+      <button class="b-primary" id="btnMore">+ Otra página</button>
+    </div>
+    <div class="row">
+      <button class="b-sello" id="btnFinish">Terminar y generar PDF</button>
+    </div>
+    <div class="rev-thumbs-wrap pages hidden" id="revPagesBox">
+      <h2><span>Páginas</span><span id="revCount">0</span></h2>
+      <div class="thumbs" id="revThumbs"></div>
+    </div>
+  </section>
 
   <div class="status" id="status"></div>
-
-  <div class="pages hidden" id="pagesBox">
-    <h2><span>Páginas capturadas</span><span id="count">0</span></h2>
-    <div class="thumbs" id="thumbs"></div>
-  </div>
 </main>
 
 <footer>
@@ -373,29 +407,72 @@ function enhance(cnv){
   ctx.putImageData(d,0,0);
 }
 
+/* ---------- cambio de vistas ---------- */
+function showCam(){
+  $('viewReview').classList.add('hidden');
+  $('viewCam').classList.remove('hidden');
+}
+function showReview(){
+  $('viewCam').classList.add('hidden');
+  $('viewReview').classList.remove('hidden');
+}
+
 /* ---------- gestión de páginas ---------- */
 function addPage(dataUrl,w,h){
   pages.push({dataUrl,w,h});
-  preview.src=dataUrl; preview.classList.remove('hidden');
-  video.classList.add('hidden'); ph.classList.add('hidden');
+  stopLive();
+  // detener video para liberar la cámara mientras revisas
+  preview.src=dataUrl;
+  $('revBanner').textContent='Página '+pages.length+' lista';
   renderThumbs();
+  showReview();
 }
+
 function renderThumbs(){
-  const box=$('pagesBox'), t=$('thumbs');
-  box.classList.toggle('hidden', pages.length===0);
   $('count').textContent=pages.length;
-  t.innerHTML='';
-  pages.forEach((pg,i)=>{
-    const d=document.createElement('div'); d.className='thumb';
-    d.innerHTML=`<span class="num">${String(i+1).padStart(2,'0')}</span><img src="${pg.dataUrl}">`;
-    const x=document.createElement('button'); x.className='del'; x.textContent='×';
-    x.onclick=()=>{ pages.splice(i,1); renderThumbs(); };
-    d.appendChild(x); t.appendChild(d);
+  $('revCount').textContent=pages.length;
+  [['pagesBox','thumbs'],['revPagesBox','revThumbs']].forEach(([boxId,tId])=>{
+    const box=$(boxId), t=$(tId);
+    box.classList.toggle('hidden', pages.length===0);
+    t.innerHTML='';
+    pages.forEach((pg,i)=>{
+      const d=document.createElement('div'); d.className='thumb';
+      d.innerHTML=`<span class="num">${String(i+1).padStart(2,'0')}</span><img src="${pg.dataUrl}">`;
+      const x=document.createElement('button'); x.className='del'; x.textContent='×';
+      x.onclick=()=>{ pages.splice(i,1); renderThumbs(); if(pages.length===0) showCam(); };
+      d.appendChild(x); t.appendChild(d);
+    });
   });
   const has=pages.length>0;
   $('btnPdf').disabled=!has; $('btnClear').disabled=!has;
 }
-$('btnClear').onclick=()=>{ pages.length=0; renderThumbs(); preview.classList.add('hidden'); ph.classList.remove('hidden'); };
+
+/* ---- botones de la vista revisión ---- */
+$('btnRetake').onclick=()=>{           // descarta la última y vuelve a la cámara
+  pages.pop(); renderThumbs(); showCam();
+  restartCamera();
+  setStatus('Página descartada. Vuelve a capturar.');
+};
+$('btnMore').onclick=()=>{             // conserva y vuelve a la cámara para otra
+  showCam(); restartCamera();
+  setStatus('Página guardada. Captura la siguiente.');
+};
+$('btnFinish').onclick=()=>{ $('btnPdf').click(); };
+
+async function restartCamera(){
+  // reactiva el video si se detuvo, sin re-pedir permiso si ya hay stream vivo
+  try{
+    if(!stream || !stream.active){
+      stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'},audio:false});
+    }
+    video.srcObject=stream; await video.play();
+    video.classList.remove('hidden'); $('overlay').classList.remove('hidden'); ph.classList.add('hidden');
+    $('btnShot').disabled=false;
+    loadCV().then(startLive).catch(()=>{});
+  }catch(e){ setStatus('Reactiva la cámara con el botón.', true); }
+}
+
+$('btnClear').onclick=()=>{ pages.length=0; renderThumbs(); showCam(); setStatus('Vaciado.'); };
 
 /* ---------- generar PDF ---------- */
 $('btnPdf').onclick = async ()=>{
@@ -437,8 +514,9 @@ $('btnPdf').onclick = async ()=>{
   }
   const stamp=new Date().toISOString().slice(0,10);
   pdf.save(`${rfc}_${stamp}.pdf`);
-  setStatus('PDF generado: '+rfc+'_'+stamp+'.pdf');
+  setStatus('PDF generado: '+rfc+'_'+stamp+'.pdf — listo para el siguiente cliente.');
   $('btnPdf').disabled=false;
+  showCam();
 };
 </script>
 </body>
