@@ -61,6 +61,16 @@
   .stage .ph{color:#aaa; font-size:13px; padding:36px 24px; text-align:center}
   #overlay{position:absolute; pointer-events:none}
 
+  /* ---- hero de captura nativa ---- */
+  .capture-hero{
+    border:1.5px dashed var(--line); border-radius:8px; background:#fff;
+    padding:32px 20px; text-align:center; margin-bottom:14px;
+  }
+  .hero-icon{font-size:46px; margin-bottom:8px}
+  .hero-text{font-size:13px; color:var(--muted); margin-bottom:20px; max-width:340px; margin-left:auto; margin-right:auto}
+  .b-big{font-size:15px; padding:16px 18px; margin-bottom:10px; width:100%}
+  .capture-hero .b-ghost{width:100%}
+
   /* ---- vista revisión ---- */
   .rev-banner{
     font-family:"SF Mono",ui-monospace,monospace; font-size:12px; letter-spacing:.08em;
@@ -173,28 +183,17 @@
     <input type="text" id="rfc" placeholder="XAXX010101000" maxlength="13" autocomplete="off">
   </div>
 
-  <!-- ===== VISTA CÁMARA ===== -->
+  <!-- ===== VISTA CÁMARA (usa la cámara nativa de la MatePad) ===== -->
   <section id="viewCam">
-    <div class="stage" id="stage">
-      <span class="ph" id="ph">Activa la cámara o sube una foto del documento.</span>
-      <video id="video" class="hidden" playsinline></video>
-      <canvas id="overlay" class="hidden"></canvas>
-      <canvas id="work" class="hidden"></canvas>
+    <div class="capture-hero">
+      <div class="hero-icon">📄</div>
+      <div class="hero-text">Toma la foto del documento con la cámara de tu dispositivo. Se detecta y recorta solo.</div>
+      <button class="b-sello b-big" id="btnCapture">📷 Tomar foto del documento</button>
+      <input type="file" id="fileCapture" accept="image/*" capture="environment" class="hidden">
+      <button class="b-ghost" id="btnGallery">Elegir de la galería</button>
+      <input type="file" id="fileGallery" accept="image/*" class="hidden">
     </div>
 
-    <div class="row">
-      <button class="b-sello" id="btnCam">Activar cámara</button>
-      <button class="b-ghost" id="btnFile">Subir foto</button>
-      <input type="file" id="file" accept="image/*" class="hidden">
-    </div>
-    <div class="row">
-      <button class="b-primary" id="btnShot" disabled>Capturar página</button>
-      <button class="b-ghost" id="btnFlash" disabled>🔦 Flash</button>
-    </div>
-
-    <label class="toggle">
-      <input type="checkbox" id="auto" checked> Autocaptura — dispara solo cuando el documento está quieto
-    </label>
     <label class="toggle">
       <input type="checkbox" id="ocr"> Reconocer texto (OCR) — hace el PDF buscable, tarda más
     </label>
@@ -203,6 +202,8 @@
       <h2><span>Páginas capturadas</span><span id="count">0</span></h2>
       <div class="thumbs" id="thumbs"></div>
     </div>
+    <!-- canvas de trabajo oculto (se conserva para procesar) -->
+    <canvas id="work" class="hidden"></canvas>
   </section>
 
   <!-- ===== VISTA REVISIÓN ===== -->
@@ -272,7 +273,7 @@ let stream = null;
 let cvReady = false;
 
 const $ = id => document.getElementById(id);
-const stage=$('stage'), ph=$('ph'), video=$('video'), work=$('work'), preview=$('preview');
+const work=$('work'), preview=$('preview');
 const status=$('status');
 
 function setStatus(msg, err=false){ status.textContent=msg; status.className='status'+(err?' err':''); }
@@ -305,188 +306,28 @@ function loadCV(){
   });
 }
 
-/* ---------- cámara ---------- */
-let liveTimer=null, lastQuad=null;
+/* ---------- captura con cámara nativa de la MatePad ---------- */
+let lastQuad=null; // ya no se usa en vivo, se mantiene por compatibilidad
 
-$('btnCam').onclick = async ()=>{
-  try{
-    // 1) abrir cámara pidiendo lo más alto posible
-    stream = await navigator.mediaDevices.getUserMedia({
-      video:{
-        facingMode:'environment',
-        width:{ideal:4096}, height:{ideal:4096}  // pide enorme; el sensor da su máximo real
-      }, audio:false
-    });
+// el botón principal abre la cámara del sistema (con flash y buena definición)
+$('btnCapture').onclick = ()=> $('fileCapture').click();
+$('btnGallery').onclick = ()=> $('fileGallery').click();
 
-    // 2) consultar capacidades reales y aplicar la resolución máxima del sensor
-    await maximizeCamera();
-
-    video.srcObject = stream; await video.play();
-    ph.classList.add('hidden');
-    $('stage').classList.add('live');
-    video.classList.remove('hidden');
-    $('overlay').classList.remove('hidden');
-    $('btnShot').disabled=false;
-    setupTorch();
-    setStatus('Cámara lista. Cargando guía de bordes…');
-    loadCV().then(startLive).catch(()=> setStatus('Cámara lista (sin guía en vivo). Igual puedes capturar.'));
-  }catch(e){ setStatus('No se pudo abrir la cámara. Usa "Subir foto".', true); }
-};
-
-// aplica la máxima resolución que el sensor reporta + corrige sobreexposición
-async function maximizeCamera(){
-  const track=stream && stream.getVideoTracks()[0];
-  if(!track || !track.getCapabilities) return;
-  try{
-    const caps=track.getCapabilities();
-    const adv={};
-    if(caps.width && caps.width.max)  adv.width  = caps.width.max;
-    if(caps.height && caps.height.max) adv.height = caps.height.max;
-    // si la cámara permite ajustar exposición, bájala un poco (anti "muy clara")
-    if(caps.exposureMode && caps.exposureMode.includes('continuous')){
-      adv.exposureMode='continuous';
-    }
-    if(caps.exposureCompensation){
-      // tirar hacia el lado oscuro del rango para que no queme el blanco del papel
-      const ec=caps.exposureCompensation;
-      adv.exposureCompensation = ec.min + (ec.max-ec.min)*0.35;
-    }
-    if(caps.focusMode && caps.focusMode.includes('continuous')){
-      adv.focusMode='continuous'; // enfoque automático continuo = más nitidez
-    }
-    await track.applyConstraints({ advanced:[adv] });
-    // mostrar resolución resultante
-    const s=track.getSettings();
-    if(s.width && s.height) setStatus('Cámara '+s.width+'×'+s.height);
-  }catch(e){ /* si algún ajuste no se soporta, seguimos con lo que haya */ }
-}
-
-/* detección continua para el marco guía verde */
-function startLive(){
-  setStatus('Encuadra el documento — el marco verde indica que lo detecté.');
-  const ov=$('overlay'), octx=ov.getContext('2d');
-  if(liveTimer) clearInterval(liveTimer);
-  liveTimer=setInterval(()=>{
-    if(video.classList.contains('hidden')||!video.videoWidth) return;
-
-    // object-fit:cover -> el video llena el elemento y RECORTA lo que sobra
-    const vw=video.videoWidth, vh=video.videoHeight;
-    const ew=video.clientWidth, eh=video.clientHeight;
-    const r=Math.max(ew/vw, eh/vh);          // escala de cover
-    const dw=vw*r, dh=vh*r;                   // tamaño pintado (mayor que el elemento)
-    const offX=(ew-dw)/2, offY=(eh-dh)/2;     // recorte (negativos)
-
-    // overlay del tamaño del ELEMENTO visible (no del video completo)
-    ov.style.left=video.offsetLeft+'px';
-    ov.style.top=video.offsetTop+'px';
-    ov.style.width=ew+'px'; ov.style.height=eh+'px';
-    ov.width=ew; ov.height=eh;
-
-    const quad=detectQuadLive();
-    octx.clearRect(0,0,ov.width,ov.height);
-    if(quad){
-      lastQuad=quad;
-      const stable=isStable(quad);
-      const col=stable ? '#19c37d' : '#e0a23c';
-      // mapear coords del video (full) a pantalla considerando el recorte de cover
-      const mapX=x=>x*r+offX, mapY=y=>y*r+offY;
-      octx.beginPath();
-      quad.forEach((p,i)=>{ const x=mapX(p.x),y=mapY(p.y); i?octx.lineTo(x,y):octx.moveTo(x,y); });
-      octx.closePath();
-      octx.strokeStyle=col; octx.lineWidth=3; octx.stroke();
-      octx.fillStyle=stable?'rgba(25,195,125,0.16)':'rgba(224,162,60,0.12)'; octx.fill();
-
-      // ---- autocaptura ----
-      if($('auto').checked && stable){
-        stableCount++;
-        if(stableCount>=2){ // ~2 ciclos quieto, más ágil
-          stableCount=0; prevQuad=null;
-          $('btnShot').click();
-        }
-      } else stableCount=0;
-    } else { lastQuad=null; stableCount=0; }
-  }, 280);
-}
-
-/* mide si el cuadrilátero casi no se movió respecto al frame anterior */
-let prevQuad=null, stableCount=0;
-function isStable(quad){
-  if(!prevQuad){ prevQuad=quad; return false; }
-  let move=0;
-  for(let i=0;i<4;i++) move+=Math.hypot(quad[i].x-prevQuad[i].x, quad[i].y-prevQuad[i].y);
-  prevQuad=quad;
-  return move < 40; // umbral de movimiento total en px (sobre frame full)
-}
-
-/* detección ligera sobre frame reducido (rápida para el bucle) */
-function detectQuadLive(){
-  const TW=400; // más pequeño = más rápido en el teléfono
-  const scale=TW/video.videoWidth;
-  const tw=TW, th=Math.round(video.videoHeight*scale);
-  work.width=tw; work.height=th;
-  work.getContext('2d').drawImage(video,0,0,tw,th);
-  let img=cv.imread(work), gray=new cv.Mat(), edges=new cv.Mat();
-  cv.cvtColor(img,gray,cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
-  cv.Canny(gray,edges,40,120);
-  cv.dilate(edges,edges,cv.Mat.ones(5,5,cv.CV_8U));
-  let contours=new cv.MatVector(), hier=new cv.Mat();
-  cv.findContours(edges,contours,hier,cv.RETR_LIST,cv.CHAIN_APPROX_SIMPLE);
-  let quad=null, bestArea=tw*th*0.12; // umbral más bajo = detecta más fácil
-  for(let i=0;i<contours.size();i++){
-    const c=contours.get(i), peri=cv.arcLength(c,true), ap=new cv.Mat();
-    cv.approxPolyDP(c,ap,0.025*peri,true);
-    const area=Math.abs(cv.contourArea(ap));
-    if(ap.rows===4 && area>bestArea){
-      bestArea=area;
-      quad=[]; for(let k=0;k<4;k++) quad.push({x:ap.data32S[k*2]/scale, y:ap.data32S[k*2+1]/scale});
-    }
-    ap.delete(); c.delete();
-  }
-  img.delete();gray.delete();edges.delete();contours.delete();hier.delete();
-  return quad;
-}
-
-function stopLive(){ if(liveTimer){clearInterval(liveTimer); liveTimer=null;} prevQuad=null; stableCount=0; $('overlay').classList.add('hidden'); }
-
-/* ---------- flash / linterna ---------- */
-let torchOn=false;
-function setupTorch(){
-  const track=stream && stream.getVideoTracks()[0];
-  const caps=track && track.getCapabilities ? track.getCapabilities() : {};
-  if(caps && caps.torch){
-    $('btnFlash').disabled=false;
-  } else {
-    $('btnFlash').disabled=true;
-    $('btnFlash').title='Tu dispositivo/navegador no permite controlar el flash aquí';
-  }
-}
-$('btnFlash').onclick=async ()=>{
-  const track=stream && stream.getVideoTracks()[0];
-  if(!track) return;
-  try{
-    torchOn=!torchOn;
-    await track.applyConstraints({advanced:[{torch:torchOn}]});
-    $('btnFlash').classList.toggle('f-active', torchOn);
-    $('btnFlash').textContent = torchOn ? '🔦 Flash on' : '🔦 Flash';
-  }catch(e){ setStatus('No se pudo cambiar el flash en este equipo.', true); }
-};
-
-/* ---------- subir archivo ---------- */
-$('btnFile').onclick = ()=> $('file').click();
-$('file').onchange = (e)=>{
-  const f=e.target.files[0]; if(!f) return;
+function handleIncomingFile(e){
+  const f=e.target.files[0];
+  e.target.value=''; // permite volver a elegir la misma foto
+  if(!f) return;
+  setStatus('Procesando imagen…');
   const img=new Image();
-  img.onload=()=> processSource(img, img.naturalWidth, img.naturalHeight);
+  img.onload=()=>{
+    lastQuad=null; // que processSource detecte desde cero
+    processSource(img, img.naturalWidth, img.naturalHeight);
+  };
+  img.onerror=()=> setStatus('No se pudo leer la imagen.', true);
   img.src=URL.createObjectURL(f);
-};
-
-/* ---------- capturar de la cámara ---------- */
-$('btnShot').onclick = ()=>{
-  if(video.classList.contains('hidden')) return;
-  stopLive();
-  processSource(video, video.videoWidth, video.videoHeight);
-};
+}
+$('fileCapture').onchange = handleIncomingFile;
+$('fileGallery').onchange = handleIncomingFile;
 
 /* ---------- pipeline: detectar bordes + enderezar + limpiar ---------- */
 async function processSource(src, w, h){
@@ -533,7 +374,6 @@ async function processSource(src, w, h){
 
     // guardamos el CRUDO a color + esquinas; el enderezado se hace al renderizar
     addPage(work2canvas(work), quad, !!bestQuad);
-    img.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hier.delete();
   }catch(e){ setStatus('Error al procesar: '+e.message, true); }
 }
 
@@ -778,7 +618,6 @@ function addPage(rawCanvas, quad, enderezada){
             filter:currentFilter, dataUrl:'', w:0, h:0};
   pages.push(pg);
   renderPageFilter(pages.length-1);
-  stopLive();
   preview.src=pg.dataUrl;
   const mp=((pg.w*pg.h)/1e6).toFixed(1);
   $('revBanner').textContent='Página '+pages.length+(enderezada?' · auto':' · sin recorte')+' · '+pg.w+'×'+pg.h+' ('+mp+' MP)';
@@ -832,14 +671,15 @@ function renderThumbs(){
 }
 
 /* ---- botones de la vista revisión ---- */
-$('btnRetake').onclick=()=>{           // descarta la última y vuelve a la cámara
+$('btnRetake').onclick=()=>{           // descarta la última y vuelve a tomar
   pages.pop(); renderThumbs(); showCam();
-  restartCamera();
-  setStatus('Página descartada. Vuelve a capturar.');
+  setStatus('Página descartada. Toma la foto de nuevo.');
+  $('fileCapture').click();
 };
-$('btnMore').onclick=()=>{             // conserva y vuelve a la cámara para otra
-  showCam(); restartCamera();
-  setStatus('Página guardada. Captura la siguiente.');
+$('btnMore').onclick=()=>{             // conserva y vuelve a tomar otra
+  showCam();
+  setStatus('Página guardada. Toma la siguiente.');
+  $('fileCapture').click();
 };
 $('btnFinish').onclick=()=>{ $('btnPdf').click(); };
 
@@ -921,23 +761,6 @@ $('cornerApply').onclick=()=>{
   },20);
 };
 
-
-async function restartCamera(){
-  // reactiva el video si se detuvo, sin re-pedir permiso si ya hay stream vivo
-  try{
-    if(!stream || !stream.active){
-      stream=await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:'environment', width:{ideal:4096}, height:{ideal:4096}}, audio:false
-      });
-      await maximizeCamera();
-    }
-    video.srcObject=stream; await video.play();
-    video.classList.remove('hidden'); $('overlay').classList.remove('hidden'); ph.classList.add('hidden'); $('stage').classList.add('live');
-    $('btnShot').disabled=false;
-    setupTorch();
-    loadCV().then(startLive).catch(()=>{});
-  }catch(e){ setStatus('Reactiva la cámara con el botón.', true); }
-}
 
 $('btnClear').onclick=()=>{ pages.length=0; renderThumbs(); showCam(); setStatus('Vaciado.'); };
 
