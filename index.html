@@ -660,12 +660,29 @@ function applyFilter(srcCanvas, mode){
     // umbral global sobre la imagen ya nivelada
     let sum=0, n=p.length/4;
     for(let i=0;i<p.length;i+=4) sum+=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-    const mean=sum/n, thr=mean*0.90; // más alto = más píxeles caen a negro (letras más marcadas)
-    for(let i=0;i<p.length;i+=4){
-      const g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-      const v=g>thr?255:0;
-      p[i]=p[i+1]=p[i+2]=v;
+    const mean=sum/n, thr=mean*0.86; // letras marcadas sin ensuciar el fondo
+    const bin=new Uint8Array(W*H);
+    for(let i=0,j=0;i<p.length;i+=4,j++){
+      bin[j]=(0.299*p[i]+0.587*p[i+1]+0.114*p[i+2])>thr?255:0;
     }
+    // limpieza: quita píxeles negros aislados (ruido), conserva trazos de texto.
+    // un negro rodeado de muchos blancos es ruido -> se vuelve blanco.
+    const clean=new Uint8Array(W*H);
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        const j=y*W+x;
+        if(bin[j]===255){ clean[j]=255; continue; }
+        // contar vecinos negros en 3x3
+        let blacks=0;
+        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+          const ny=y+dy, nx=x+dx;
+          if(ny>=0&&ny<H&&nx>=0&&nx<W && bin[ny*W+nx]===0) blacks++;
+        }
+        // si está casi solo (≤2 vecinos negros), es ruido -> blanco
+        clean[j]=(blacks<=2)?255:0;
+      }
+    }
+    for(let i=0,j=0;i<p.length;i+=4,j++){ p[i]=p[i+1]=p[i+2]=clean[j]; }
   }
   ctx.putImageData(d,0,0);
   return c;
