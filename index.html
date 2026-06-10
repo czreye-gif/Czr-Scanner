@@ -50,11 +50,13 @@
 
   .stage{
     border:1px solid var(--line); border-radius:4px; background:#000;
-    aspect-ratio:3/4; max-height:52vh; margin:0 auto; overflow:hidden;
+    max-height:60vh; margin:0 auto; overflow:hidden;
     display:flex; align-items:center; justify-content:center; position:relative;
   }
-  .stage video,.stage canvas,.stage img{max-width:100%; max-height:100%; display:block}
-  .stage .ph{color:#777; font-size:13px; padding:0 24px; text-align:center}
+  .stage video,.stage img{width:100%; height:auto; max-height:60vh; object-fit:contain; display:block}
+  .stage #work{display:none}
+  #overlay{position:absolute; top:0; left:0; width:100%; height:100%; pointer-events:none}
+  .stage .ph{color:#777; font-size:13px; padding:40px 24px; text-align:center}
 
   .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
   button{
@@ -119,6 +121,7 @@
   <div class="stage" id="stage">
     <span class="ph" id="ph">Activa la cámara o sube una foto del documento.</span>
     <video id="video" class="hidden" playsinline></video>
+    <canvas id="overlay" class="hidden"></canvas>
     <canvas id="work" class="hidden"></canvas>
     <img id="preview" class="hidden" alt="">
   </div>
@@ -194,16 +197,74 @@ function loadCV(){
 }
 
 /* ---------- cámara ---------- */
+let liveTimer=null, lastQuad=null;
+
 $('btnCam').onclick = async ()=>{
   try{
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment', width:{ideal:1920}, height:{ideal:1080}}
+    });
     video.srcObject = stream; await video.play();
     ph.classList.add('hidden'); preview.classList.add('hidden');
     video.classList.remove('hidden');
+    $('overlay').classList.remove('hidden');
     $('btnShot').disabled=false;
-    setStatus('Cámara lista. Encuadra el documento y captura.');
+    setStatus('Cámara lista. Cargando guía de bordes…');
+    loadCV().then(startLive).catch(()=> setStatus('Cámara lista (sin guía en vivo). Igual puedes capturar.'));
   }catch(e){ setStatus('No se pudo abrir la cámara. Usa "Subir foto".', true); }
 };
+
+/* detección continua para el marco guía verde */
+function startLive(){
+  setStatus('Encuadra el documento — el marco verde indica que lo detecté.');
+  const ov=$('overlay'), octx=ov.getContext('2d');
+  if(liveTimer) clearInterval(liveTimer);
+  liveTimer=setInterval(()=>{
+    if(video.classList.contains('hidden')||!video.videoWidth) return;
+    ov.width=video.clientWidth; ov.height=video.clientHeight;
+    const quad=detectQuadLive();
+    octx.clearRect(0,0,ov.width,ov.height);
+    if(quad){
+      lastQuad=quad;
+      const sx=ov.width/video.videoWidth, sy=ov.height/video.videoHeight;
+      octx.beginPath();
+      quad.forEach((p,i)=>{ const x=p.x*sx,y=p.y*sy; i?octx.lineTo(x,y):octx.moveTo(x,y); });
+      octx.closePath();
+      octx.strokeStyle='#1f5c4d'; octx.lineWidth=3; octx.stroke();
+      octx.fillStyle='rgba(31,92,77,0.12)'; octx.fill();
+    } else lastQuad=null;
+  }, 350);
+}
+
+/* detección ligera sobre frame reducido (rápida para el bucle) */
+function detectQuadLive(){
+  const scale=600/video.videoWidth;
+  const tw=600, th=Math.round(video.videoHeight*scale);
+  work.width=tw; work.height=th;
+  work.getContext('2d').drawImage(video,0,0,tw,th);
+  let img=cv.imread(work), gray=new cv.Mat(), edges=new cv.Mat();
+  cv.cvtColor(img,gray,cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
+  cv.Canny(gray,edges,50,150);
+  cv.dilate(edges,edges,cv.Mat.ones(3,3,cv.CV_8U));
+  let contours=new cv.MatVector(), hier=new cv.Mat();
+  cv.findContours(edges,contours,hier,cv.RETR_LIST,cv.CHAIN_APPROX_SIMPLE);
+  let quad=null, bestArea=tw*th*0.15;
+  for(let i=0;i<contours.size();i++){
+    const c=contours.get(i), peri=cv.arcLength(c,true), ap=new cv.Mat();
+    cv.approxPolyDP(c,ap,0.02*peri,true);
+    const area=Math.abs(cv.contourArea(ap));
+    if(ap.rows===4 && area>bestArea){
+      bestArea=area;
+      quad=[]; for(let k=0;k<4;k++) quad.push({x:ap.data32S[k*2]/scale, y:ap.data32S[k*2+1]/scale});
+    }
+    ap.delete(); c.delete();
+  }
+  img.delete();gray.delete();edges.delete();contours.delete();hier.delete();
+  return quad;
+}
+
+function stopLive(){ if(liveTimer){clearInterval(liveTimer); liveTimer=null;} $('overlay').classList.add('hidden'); }
 
 /* ---------- subir archivo ---------- */
 $('btnFile').onclick = ()=> $('file').click();
@@ -217,6 +278,7 @@ $('file').onchange = (e)=>{
 /* ---------- capturar de la cámara ---------- */
 $('btnShot').onclick = ()=>{
   if(video.classList.contains('hidden')) return;
+  stopLive();
   processSource(video, video.videoWidth, video.videoHeight);
 };
 
