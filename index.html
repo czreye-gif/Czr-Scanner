@@ -171,14 +171,25 @@ function loadCV(){
   return new Promise((res,rej)=>{
     if(cvReady) return res();
     setStatus('Cargando motor de detección…');
-    const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/opencv.js/4.8.0/opencv.js';
-    s.onload=()=>{
+    const sources=[
+      'https://docs.opencv.org/4.10.0/opencv.js',
+      'https://docs.opencv.org/4.8.0/opencv.js',
+      'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js'
+    ];
+    let idx=0;
+    const ready=()=>{
       if(window.cv && cv.getBuildInformation){ cvReady=true; setStatus(''); res(); }
       else { cv['onRuntimeInitialized']=()=>{ cvReady=true; setStatus(''); res(); }; }
     };
-    s.onerror=()=>rej(new Error('No se pudo cargar OpenCV'));
-    document.body.appendChild(s);
+    const tryNext=()=>{
+      if(idx>=sources.length){ rej(new Error('No se pudo cargar OpenCV desde ninguna fuente')); return; }
+      const s=document.createElement('script');
+      s.src=sources[idx++];
+      s.onload=ready;
+      s.onerror=()=>{ setStatus('Reintentando con otra fuente…'); tryNext(); };
+      document.body.appendChild(s);
+    };
+    tryNext();
   });
 }
 
