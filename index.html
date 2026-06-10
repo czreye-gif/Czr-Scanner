@@ -50,11 +50,11 @@
 
   .stage{
     border:1px solid var(--line); border-radius:4px; background:#000;
-    margin:0 auto; overflow:hidden; position:relative;
+    margin:0 auto 4px; overflow:hidden; position:relative;
     display:flex; align-items:center; justify-content:center;
-    width:100%;
+    width:100%; min-height:72vh;
   }
-  .stage video,.stage img{display:block; width:100%; height:auto; max-height:64vh; object-fit:contain}
+  .stage video,.stage img{display:block; width:100%; height:auto; max-height:78vh; object-fit:contain}
   .stage #work{display:none}
   #overlay{position:absolute; pointer-events:none}
 
@@ -68,8 +68,17 @@
   .rev-stage{
     border:1px solid var(--line); border-radius:4px; background:#f0ede4;
     padding:12px; display:flex; justify-content:center; align-items:center;
-    margin-bottom:6px; min-height:50vh; overflow:hidden; touch-action:none;
+    margin-bottom:6px; min-height:50vh; overflow:hidden; touch-action:none; position:relative;
   }
+  .zoom-ctrls{
+    position:absolute; bottom:10px; right:10px; display:flex; gap:6px; z-index:5;
+  }
+  .zoom-ctrls button{
+    width:auto; min-width:40px; height:40px; padding:0 12px; border:none; border-radius:20px;
+    background:rgba(20,22,26,.82); color:#fff; font-size:18px; font-weight:600;
+    cursor:pointer; backdrop-filter:blur(4px); flex:none; box-shadow:0 2px 8px rgba(0,0,0,.25);
+  }
+  .zoom-ctrls #zFit{font-size:12px; letter-spacing:.04em}
   .rev-stage img{
     display:block; max-width:100%; max-height:62vh; width:auto; height:auto;
     box-shadow:0 2px 18px rgba(0,0,0,.22); background:#fff;
@@ -186,11 +195,15 @@
     <div class="rev-banner" id="revBanner">Página 1 lista</div>
     <div class="rev-stage" id="revStage">
       <img id="preview" alt="Página capturada">
+      <div class="zoom-ctrls">
+        <button id="zOut" type="button">−</button>
+        <button id="zFit" type="button">Ajustar</button>
+        <button id="zIn" type="button">+</button>
+      </div>
     </div>
-    <div class="zoom-hint">Pellizca o doble-toca la imagen para acercar · arrastra para mover</div>
+    <div class="zoom-hint">Usa + / − o pellizca para acercar · arrastra para mover</div>
     <div class="filters">
       <button class="f-btn" id="f-color">Color</button>
-      <button class="f-btn" id="f-nosombra">Sin sombra</button>
       <button class="f-btn f-active" id="f-gris">Gris</button>
       <button class="f-btn" id="f-byn">B/N texto</button>
     </div>
@@ -516,18 +529,20 @@ function deshadow(srcCanvas){
 
 // devuelve un nuevo canvas con el filtro aplicado sobre el canvas original a color
 function applyFilter(srcCanvas, mode){
-  // modos con quita-sombra: empezamos corrigiendo iluminación
+  // B/N corrige iluminación primero (sin pixelear, solo para binarizar)
   let base=srcCanvas;
-  if(mode==='nosombra' || mode==='byn'){
+  if(mode==='byn'){
     try{ base=deshadow(srcCanvas); }catch(e){ base=srcCanvas; }
   }
   const c=document.createElement('canvas');
   c.width=base.width; c.height=base.height;
   const ctx=c.getContext('2d');
   ctx.drawImage(base,0,0);
-  if(mode==='color' || mode==='nosombra') return c;
+  if(mode==='color') return c;
 
-  const d=ctx.getImageData(0,0,c.width,c.height), p=d.data;
+  const W=c.width, H=c.height;
+  const d=ctx.getImageData(0,0,W,H), p=d.data;
+
   if(mode==='gris'){
     for(let i=0;i<p.length;i+=4){
       let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
@@ -535,14 +550,36 @@ function applyFilter(srcCanvas, mode){
       p[i]=p[i+1]=p[i+2]=g;
     }
   } else if(mode==='byn'){
-    // tras quitar sombra, el umbral global ya funciona limpio
-    let sum=0, n=p.length/4;
-    for(let i=0;i<p.length;i+=4) sum+=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-    const mean=sum/n, thr=mean*0.80;
-    for(let i=0;i<p.length;i+=4){
-      const g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-      const v=g>thr?255:0;
-      p[i]=p[i+1]=p[i+2]=v;
+    // umbral ADAPTATIVO por bloques: cada zona usa su propio promedio local.
+    // da letras más nítidas que un umbral global y conserva resolución.
+    const lum=new Float32Array(W*H);
+    for(let i=0,j=0;i<p.length;i+=4,j++) lum[j]=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
+
+    // promedio por bloques (integral image para velocidad)
+    const block=Math.max(16, Math.round(Math.min(W,H)/40)); // tamaño de ventana local
+    const bias=10; // qué tan por debajo del promedio local se considera tinta
+    // suma acumulada (integral)
+    const sat=new Float64Array((W+1)*(H+1));
+    for(let y=1;y<=H;y++){
+      let rs=0;
+      for(let x=1;x<=W;x++){
+        rs+=lum[(y-1)*W+(x-1)];
+        sat[y*(W+1)+x]=sat[(y-1)*(W+1)+x]+rs;
+      }
+    }
+    const half=block>>1;
+    for(let y=0;y<H;y++){
+      const y0=Math.max(0,y-half), y1=Math.min(H-1,y+half);
+      for(let x=0;x<W;x++){
+        const x0=Math.max(0,x-half), x1=Math.min(W-1,x+half);
+        const area=(x1-x0+1)*(y1-y0+1);
+        const sum=sat[(y1+1)*(W+1)+(x1+1)]-sat[(y0)*(W+1)+(x1+1)]
+                 -sat[(y1+1)*(W+1)+(x0)]+sat[(y0)*(W+1)+(x0)];
+        const localMean=sum/area;
+        const i=(y*W+x)*4;
+        const v=(lum[y*W+x] < localMean-bias) ? 0 : 255;
+        p[i]=p[i+1]=p[i+2]=v;
+      }
     }
   }
   ctx.putImageData(d,0,0);
@@ -600,6 +637,12 @@ function applyFilter(srcCanvas, mode){
     scale=Math.min(5, Math.max(1, scale + (e.deltaY<0?0.2:-0.2)));
     if(scale===1){tx=0;ty=0;} apply();
   },{passive:false});
+
+  // botones visibles
+  function zoomBy(f){ scale=Math.min(5,Math.max(1, scale*f)); if(scale<=1){scale=1;tx=0;ty=0;} apply(); }
+  $('zIn').onclick =(e)=>{ e.stopPropagation(); zoomBy(1.4); };
+  $('zOut').onclick=(e)=>{ e.stopPropagation(); zoomBy(1/1.4); };
+  $('zFit').onclick=(e)=>{ e.stopPropagation(); reset(); };
 })();
 
 function showCam(){
@@ -641,17 +684,22 @@ function setReviewFilter(mode){
   if(!pages.length) return;
   const i=pages.length-1;
   pages[i].filter=mode; currentFilter=mode;
-  renderPageFilter(i);
-  preview.src=pages[i].dataUrl;
   markFilterButtons(mode);
-  renderThumbs();
+  if(mode==='byn') setStatus('Procesando B/N…');
+  // dejar pintar el estado antes del cálculo pesado
+  setTimeout(()=>{
+    renderPageFilter(i);
+    preview.src=pages[i].dataUrl;
+    renderThumbs();
+    setStatus(mode==='byn'?'B/N listo.':'');
+  }, 20);
 }
 function markFilterButtons(mode){
-  ['color','nosombra','gris','byn'].forEach(m=>{
+  ['color','gris','byn'].forEach(m=>{
     const b=$('f-'+m); if(b) b.classList.toggle('f-active', m===mode);
   });
 }
-['color','nosombra','gris','byn'].forEach(m=>{
+['color','gris','byn'].forEach(m=>{
   const b=$('f-'+m); if(b) b.onclick=()=>setReviewFilter(m);
 });
 
