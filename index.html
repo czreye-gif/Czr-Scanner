@@ -310,12 +310,17 @@ let liveTimer=null, lastQuad=null;
 
 $('btnCam').onclick = async ()=>{
   try{
+    // 1) abrir cámara pidiendo lo más alto posible
     stream = await navigator.mediaDevices.getUserMedia({
       video:{
         facingMode:'environment',
-        width:{ideal:2160}, height:{ideal:3840}  // vertical: llena la pantalla, sin franjas
+        width:{ideal:4096}, height:{ideal:4096}  // pide enorme; el sensor da su máximo real
       }, audio:false
     });
+
+    // 2) consultar capacidades reales y aplicar la resolución máxima del sensor
+    await maximizeCamera();
+
     video.srcObject = stream; await video.play();
     ph.classList.add('hidden');
     $('stage').classList.add('live');
@@ -327,6 +332,34 @@ $('btnCam').onclick = async ()=>{
     loadCV().then(startLive).catch(()=> setStatus('Cámara lista (sin guía en vivo). Igual puedes capturar.'));
   }catch(e){ setStatus('No se pudo abrir la cámara. Usa "Subir foto".', true); }
 };
+
+// aplica la máxima resolución que el sensor reporta + corrige sobreexposición
+async function maximizeCamera(){
+  const track=stream && stream.getVideoTracks()[0];
+  if(!track || !track.getCapabilities) return;
+  try{
+    const caps=track.getCapabilities();
+    const adv={};
+    if(caps.width && caps.width.max)  adv.width  = caps.width.max;
+    if(caps.height && caps.height.max) adv.height = caps.height.max;
+    // si la cámara permite ajustar exposición, bájala un poco (anti "muy clara")
+    if(caps.exposureMode && caps.exposureMode.includes('continuous')){
+      adv.exposureMode='continuous';
+    }
+    if(caps.exposureCompensation){
+      // tirar hacia el lado oscuro del rango para que no queme el blanco del papel
+      const ec=caps.exposureCompensation;
+      adv.exposureCompensation = ec.min + (ec.max-ec.min)*0.35;
+    }
+    if(caps.focusMode && caps.focusMode.includes('continuous')){
+      adv.focusMode='continuous'; // enfoque automático continuo = más nitidez
+    }
+    await track.applyConstraints({ advanced:[adv] });
+    // mostrar resolución resultante
+    const s=track.getSettings();
+    if(s.width && s.height) setStatus('Cámara '+s.width+'×'+s.height);
+  }catch(e){ /* si algún ajuste no se soporta, seguimos con lo que haya */ }
+}
 
 /* detección continua para el marco guía verde */
 function startLive(){
@@ -596,10 +629,23 @@ function applyFilter(srcCanvas, mode){
   c.width=base.width; c.height=base.height;
   const ctx=c.getContext('2d');
   ctx.drawImage(base,0,0);
-  if(mode==='color') return c;
 
   const W=c.width, H=c.height;
   const d=ctx.getImageData(0,0,W,H), p=d.data;
+
+  if(mode==='color'){
+    // realce suave: más contraste y un punto menos de brillo (anti "muy clara")
+    for(let i=0;i<p.length;i+=4){
+      for(let k=0;k<3;k++){
+        let v=p[i+k];
+        v=(v-128)*1.15+128-6;           // contraste + leve oscurecida
+        v=255*Math.pow(Math.max(0,v)/255, 1.08); // gamma para dar cuerpo
+        p[i+k]=v<0?0:v>255?255:v;
+      }
+    }
+    ctx.putImageData(d,0,0);
+    return c;
+  }
 
   if(mode==='gris'){
     for(let i=0;i<p.length;i+=4){
@@ -864,8 +910,9 @@ async function restartCamera(){
   try{
     if(!stream || !stream.active){
       stream=await navigator.mediaDevices.getUserMedia({
-        video:{facingMode:'environment', width:{ideal:2160}, height:{ideal:3840}}, audio:false
+        video:{facingMode:'environment', width:{ideal:4096}, height:{ideal:4096}}, audio:false
       });
+      await maximizeCamera();
     }
     video.srcObject=stream; await video.play();
     video.classList.remove('hidden'); $('overlay').classList.remove('hidden'); ph.classList.add('hidden'); $('stage').classList.add('live');
