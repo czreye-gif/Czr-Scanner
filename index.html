@@ -52,10 +52,12 @@
     border:1px solid var(--line); border-radius:4px; background:#000;
     margin:0 auto 4px; overflow:hidden; position:relative;
     display:flex; align-items:center; justify-content:center;
-    width:100%; min-height:72vh;
+    width:100%; min-height:120px;
   }
+  .stage.live{min-height:72vh}
   .stage video,.stage img{display:block; width:100%; height:auto; max-height:78vh; object-fit:contain}
   .stage #work{display:none}
+  .stage .ph{color:#aaa; font-size:13px; padding:36px 24px; text-align:center}
   #overlay{position:absolute; pointer-events:none}
 
   /* ---- vista revisión ---- */
@@ -315,6 +317,7 @@ $('btnCam').onclick = async ()=>{
     });
     video.srcObject = stream; await video.play();
     ph.classList.add('hidden');
+    $('stage').classList.add('live');
     video.classList.remove('hidden');
     $('overlay').classList.remove('hidden');
     $('btnShot').disabled=false;
@@ -572,9 +575,9 @@ function applyFilter(srcCanvas, mode){
   let base=srcCanvas;
   // Gris: corrección de sombra MUY leve. B/N: leve. Color: nada.
   if(mode==='gris'){
-    try{ base=deshadow(srcCanvas, 0.35); }catch(e){ base=srcCanvas; }
+    try{ base=deshadow(srcCanvas, 0.20); }catch(e){ base=srcCanvas; }
   } else if(mode==='byn'){
-    try{ base=deshadow(srcCanvas, 0.55); }catch(e){ base=srcCanvas; }
+    try{ base=deshadow(srcCanvas, 0.38); }catch(e){ base=srcCanvas; }
   }
   const c=document.createElement('canvas');
   c.width=base.width; c.height=base.height;
@@ -842,7 +845,7 @@ async function restartCamera(){
       });
     }
     video.srcObject=stream; await video.play();
-    video.classList.remove('hidden'); $('overlay').classList.remove('hidden'); ph.classList.add('hidden');
+    video.classList.remove('hidden'); $('overlay').classList.remove('hidden'); ph.classList.add('hidden'); $('stage').classList.add('live');
     $('btnShot').disabled=false;
     setupTorch();
     loadCV().then(startLive).catch(()=>{});
