@@ -360,7 +360,6 @@ function work2canvas(srcCanvas){
   return c;
 }
 
-// Ordenamiento robusto por sumas y diferencias
 function orderQuad(pts){
   const sum = pts.map(p => p.x + p.y);
   const diff = pts.map(p => p.x - p.y);
@@ -453,82 +452,71 @@ function warpCanvas(srcCanvas, quad){
   return cnv;
 }
 
-// NUEVA FUNCIÓN: Histogramas independientes para cada canal (Balance de blancos)
-function computeLevels(canvas){
-  const sw=Math.min(300, canvas.width), sh=Math.max(1, Math.round(canvas.height*sw/canvas.width));
-  const s=document.createElement('canvas'); s.width=sw; s.height=sh;
-  const sctx=s.getContext('2d');
-  sctx.drawImage(canvas,0,0,sw,sh);
-  const d=sctx.getImageData(0,0,sw,sh).data;
-  const total=sw*sh;
-
-  const hR=new Float64Array(256), hG=new Float64Array(256), hB=new Float64Array(256), hL=new Float64Array(256);
-  
-  for(let i=0;i<d.length;i+=4){
-    hR[d[i]]++; hG[d[i+1]]++; hB[d[i+2]]++;
-    hL[(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])|0]++;
-  }
-
-  const getBounds = (hist) => {
-    let acc=0, lo=0, hi=255;
-    for(let v=0;v<256;v++){ acc+=hist[v]; if(acc>=total*0.01){ lo=v; break; } }
-    acc=0;
-    for(let v=255;v>=0;v--){ acc+=hist[v]; if(acc>=total*0.20){ hi=v; break; } }
-    if(hi-lo<30){ lo=0; hi=255; }
-    return {lo, hi, range: hi-lo};
-  };
-
-  return { R: getBounds(hR), G: getBounds(hG), B: getBounds(hB), L: getBounds(hL) };
-}
-
-// NUEVA FUNCIÓN: Estirado de color equilibrado
+// CORRECCIÓN MAGISTRAL: Filtros Profesionales con OpenCV nativo
 function applyFilter(srcCanvas, mode){
-  const c=document.createElement('canvas');
-  c.width=srcCanvas.width; c.height=srcCanvas.height;
-  const ctx=c.getContext('2d');
-  ctx.drawImage(srcCanvas,0,0);
-  if(mode==='orig') return c;
-
-  const levels=computeLevels(srcCanvas);
-  const W=c.width, H=c.height;
-  const d=ctx.getImageData(0,0,W,H), p=d.data;
-  
-  const stretch = (v, bounds) => { v=(v-bounds.lo)*255/bounds.range; return v<0?0:v>255?255:v; };
-
-  if(mode==='magic'){
-    // Mejorado: forzamos que el tinte rojo/cálido desaparezca equilibrando R, G y B individualmente
-    for(let i=0;i<p.length;i+=4){
-      p[i]   = stretch(p[i],   levels.R);
-      p[i+1] = stretch(p[i+1], levels.G);
-      p[i+2] = stretch(p[i+2], levels.B);
-    }
-  } else if(mode==='gris'){
-    for(let i=0;i<p.length;i+=4){
-      const g=stretch(0.299*p[i]+0.587*p[i+1]+0.114*p[i+2], levels.L);
-      p[i]=p[i+1]=p[i+2]=g;
-    }
-  } else if(mode==='byn'){
-    const bin=new Uint8Array(W*H);
-    for(let i=0,j=0;i<p.length;i+=4,j++){
-      bin[j]=stretch(0.299*p[i]+0.587*p[i+1]+0.114*p[i+2], levels.L)>165?255:0;
-    }
-    const clean=new Uint8Array(W*H);
-    for(let y=0;y<H;y++){
-      for(let x=0;x<W;x++){
-        const j=y*W+x;
-        if(bin[j]===255){ clean[j]=255; continue; }
-        let blacks=0;
-        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
-          const ny=y+dy, nx=x+dx;
-          if(ny>=0&&ny<H&&nx>=0&&nx<W && bin[ny*W+nx]===0) blacks++;
-        }
-        clean[j]=(blacks<=2)?255:0;
-      }
-    }
-    for(let i=0,j=0;i<p.length;i+=4,j++){ p[i]=p[i+1]=p[i+2]=clean[j]; }
+  if(mode === 'orig') {
+    const c = document.createElement('canvas');
+    c.width = srcCanvas.width; c.height = srcCanvas.height;
+    c.getContext('2d').drawImage(srcCanvas,0,0);
+    return c;
   }
-  ctx.putImageData(d,0,0);
-  return c;
+
+  const src = cv.imread(srcCanvas);
+  // Eliminamos el canal Alpha temporalmente para procesar colores puros sin artefactos
+  cv.cvtColor(src, src, cv.COLOR_RGBA2RGB); 
+  const dst = new cv.Mat();
+
+  if(mode === 'magic' || mode === 'gris'){
+    // 1. ESTIMACIÓN DE ILUMINACIÓN DE FONDO (La magia detrás del "barrido")
+    const bg = new cv.Mat();
+    
+    // Dilatación: Borra el texto de la imagen estirando el color del papel que lo rodea
+    const morphSize = Math.max(3, Math.floor(src.cols / 120));
+    const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(morphSize, morphSize));
+    cv.morphologyEx(src, bg, cv.MORPH_DILATE, morphKernel);
+    
+    // Difuminado Fuerte: Suaviza la iluminación y las sombras que quedaron
+    let blurSize = Math.max(15, (Math.floor(src.cols / 20) | 1));
+    if(blurSize % 2 === 0) blurSize++;
+    cv.GaussianBlur(bg, bg, new cv.Size(blurSize, blurSize), 0);
+    
+    // 2. SUBSTRACCIÓN: Al dividir la foto entre su sombra difuminada, la luz se aplana perfecto a blanco
+    const divided = new cv.Mat();
+    cv.divide(src, bg, divided, 255);
+    
+    // 3. RECUPERAR TINTA: Incrementamos el contraste general un poco para que el texto resalte (negro puro)
+    divided.convertTo(dst, -1, 1.15, -15);
+    
+    if(mode === 'gris'){
+      cv.cvtColor(dst, dst, cv.COLOR_RGB2GRAY);
+      cv.cvtColor(dst, dst, cv.COLOR_GRAY2RGB);
+    }
+    
+    bg.delete(); morphKernel.delete(); divided.delete();
+  } 
+  else if(mode === 'byn'){
+    // UMBRAL ADAPTATIVO: Analiza bloques de pixeles, resolviendo el problema de las manchas de sombra grandes
+    const gray = new cv.Mat();
+    cv.cvtColor(src, gray, cv.COLOR_RGB2GRAY);
+    
+    let blockSize = Math.max(15, (Math.floor(src.cols / 15) | 1));
+    if(blockSize % 2 === 0) blockSize++;
+    
+    // C=12: El píxel debe ser 12 unidades más oscuro que su entorno inmediato para considerarse texto
+    cv.adaptiveThreshold(gray, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize, 12);
+    
+    // LIMPIEZA DE RUIDO: Elimina puntos negros microscópicos "sal y pimienta" del escaneo
+    const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
+    cv.morphologyEx(dst, dst, cv.MORPH_OPEN, morphKernel);
+    cv.cvtColor(dst, dst, cv.COLOR_GRAY2RGB);
+    
+    gray.delete(); morphKernel.delete();
+  }
+
+  const outCanvas = document.createElement('canvas');
+  cv.imshow(outCanvas, dst);
+  src.delete(); dst.delete();
+  return outCanvas;
 }
 
 /* ---------- zoom en vista previa ---------- */
