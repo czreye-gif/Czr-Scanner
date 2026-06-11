@@ -111,9 +111,9 @@
   .f-btn.f-active{background:var(--ink); color:var(--paper)}
 
   /* ---- barra de acciones de revisión ---- */
-  .actions{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px}
-  .actions .full{grid-column:1 / -1}
-  .a-btn{height:42px; font-size:13px}
+  .actions{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px}
+  .a-btn{flex:1 1 calc(33.333% - 8px); height:42px; font-size:13px; padding:0 4px}
+  #btnFinish{flex:1 1 100%;}
 
   .pages{margin-top:16px}
   .pages h2{
@@ -148,12 +148,12 @@
   footer .inner{max-width:720px; margin:0 auto; display:flex; gap:8px}
   footer button{flex:1; height:44px}
 
-  /* ---- editor de esquinas: pantalla completa con lupa ---- */
-  .corner-editor{
+  /* ---- editores modales (esquinas y borrador) ---- */
+  .modal-editor{
     position:fixed; inset:0; background:#101214; z-index:60;
     display:flex; flex-direction:column;
   }
-  .corner-editor.hidden{display:none}
+  .modal-editor.hidden{display:none}
   .ce-head{
     display:flex; align-items:center; justify-content:space-between;
     padding:12px 16px; color:#e8e5de;
@@ -236,6 +236,7 @@
     </div>
     <div class="actions">
       <button class="b-ghost a-btn" id="btnCorners">⛶ Esquinas</button>
+      <button class="b-ghost a-btn" id="btnEraser">🧹 Borrador</button>
       <button class="b-ghost a-btn" id="btnRetake">↺ Rehacer</button>
       <button class="b-primary a-btn" id="btnMore">+ Otra página</button>
       <button class="b-sello a-btn" id="btnFinish">✓ Generar PDF</button>
@@ -249,7 +250,7 @@
   <div class="status" id="status"></div>
 </main>
 
-<div id="cornerModal" class="corner-editor hidden">
+<div id="cornerModal" class="modal-editor hidden">
   <div class="ce-head">
     <div>
       <div class="t">Ajustar esquinas</div>
@@ -266,6 +267,26 @@
   <div class="ce-actions">
     <button class="ce-cancel" id="cornerCancel">Cancelar</button>
     <button class="ce-apply" id="cornerApply">Aplicar recorte</button>
+  </div>
+</div>
+
+<div id="eraserModal" class="modal-editor hidden">
+  <div class="ce-head">
+    <div>
+      <div class="t">Borrador Mágico</div>
+      <div class="s">Dibuja sobre detalles, bordes de mesa o manchas negras</div>
+    </div>
+  </div>
+  <div class="ce-wrap" id="eraserArea">
+    <div class="ce-frame">
+      <canvas id="eraserCanvas"></canvas>
+      <canvas id="eraserMask" style="position:absolute; top:0; left:0; touch-action:none;"></canvas>
+    </div>
+  </div>
+  <div class="ce-actions">
+    <button class="ce-cancel" id="eraserCancel">Cancelar</button>
+    <button class="ce-cancel" id="eraserClear" style="flex:0.6;">Limpiar trazos</button>
+    <button class="ce-apply" id="eraserApply">Aplicar magia</button>
   </div>
 </div>
 
@@ -452,7 +473,7 @@ function warpCanvas(srcCanvas, quad){
   return cnv;
 }
 
-// CORRECCIÓN EXTREMA: Mapeo de iluminación a baja resolución (Instantáneo)
+// Filtros Profesionales con OpenCV nativo
 function applyFilter(srcCanvas, mode){
   if(mode === 'orig') {
     const c = document.createElement('canvas');
@@ -465,7 +486,6 @@ function applyFilter(srcCanvas, mode){
   cv.cvtColor(src, src, cv.COLOR_RGBA2RGB); 
   const dst = new cv.Mat();
 
-  // El secreto de velocidad: Calculamos la iluminación en una imagen pequeñita
   const smallW = 600;
   const scale = smallW / src.cols;
   const smallH = Math.round(src.rows * scale);
@@ -475,19 +495,14 @@ function applyFilter(srcCanvas, mode){
     cv.resize(src, smallSrc, new cv.Size(smallW, smallH), 0, 0, cv.INTER_AREA);
 
     const bgSmall = new cv.Mat();
-    
-    // Dilatación con matriz pequeña (muy rápido)
     const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
     cv.morphologyEx(smallSrc, bgSmall, cv.MORPH_DILATE, morphKernel);
     
-    // Difuminado rápido
     cv.GaussianBlur(bgSmall, bgSmall, new cv.Size(25, 25), 0);
     
-    // Devolver el mapa de luz al tamaño original (instantáneo por ser interpolación lineal)
     const bgFull = new cv.Mat();
     cv.resize(bgSmall, bgFull, new cv.Size(src.cols, src.rows), 0, 0, cv.INTER_LINEAR);
 
-    // Matemáticas finales sobre la foto original
     const divided = new cv.Mat();
     cv.divide(src, bgFull, divided, 255);
     divided.convertTo(dst, -1, 1.15, -15);
@@ -503,7 +518,6 @@ function applyFilter(srcCanvas, mode){
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGB2GRAY);
     
-    // Mismo secreto: calcular el promedio local de grises en una miniatura
     const smallGray = new cv.Mat();
     cv.resize(gray, smallGray, new cv.Size(smallW, smallH), 0, 0, cv.INTER_AREA);
     
@@ -513,18 +527,16 @@ function applyFilter(srcCanvas, mode){
     const bgFull = new cv.Mat();
     cv.resize(bgSmall, bgFull, new cv.Size(gray.cols, gray.rows), 0, 0, cv.INTER_LINEAR);
 
-    // Umbral Adaptativo de altísima velocidad operando arrays directos
     dst.create(gray.rows, gray.cols, cv.CV_8UC1);
     const gData = gray.data;
     const bgData = bgFull.data;
     const outData = dst.data;
-    const C = 10; // Sensibilidad de contraste
+    const C = 10; 
     
     for(let i=0; i<gData.length; i++){
       outData[i] = gData[i] < (bgData[i] - C) ? 0 : 255;
     }
     
-    // Limpieza microscópica de la tinta final
     const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
     cv.morphologyEx(dst, dst, cv.MORPH_OPEN, morphKernel);
     cv.cvtColor(dst, dst, cv.COLOR_GRAY2RGB);
@@ -786,6 +798,129 @@ $('cornerApply').onclick=()=>{
     setStatus('Recorte actualizado.');
   },20);
 };
+
+/* ---------- NUEVO: Herramienta de Borrador Mágico (Inpainting) ---------- */
+let isErasing = false, lastEPos = null, eraserScale = 1;
+const fullResMaskCanvas = document.createElement('canvas');
+
+$('btnEraser').onclick = () => {
+  if(!pages.length) return;
+  const pg = pages[pages.length-1];
+  
+  // Usamos el documento ya enderezado (pg.warped) para facilitar el trazado
+  if(!pg.warped) { pg.warped = warpCanvas(pg.raw, pg.quad); pg.warpDirty = false; }
+  
+  const cv2 = $('eraserCanvas');
+  const maskCnv = $('eraserMask');
+  const ctx = cv2.getContext('2d');
+  
+  // Escalar para visualización en pantalla
+  const maxW = 1100, scale = Math.min(1, maxW / pg.warped.width);
+  cv2.width = Math.round(pg.warped.width * scale);
+  cv2.height = Math.round(pg.warped.height * scale);
+  maskCnv.width = cv2.width; 
+  maskCnv.height = cv2.height;
+  
+  ctx.drawImage(pg.warped, 0, 0, cv2.width, cv2.height);
+  eraserScale = scale;
+  
+  // Configurar el canvas oculto de resolución completa (donde ocurre la matemática)
+  fullResMaskCanvas.width = pg.warped.width;
+  fullResMaskCanvas.height = pg.warped.height;
+  clearEraser();
+  
+  $('eraserModal').classList.remove('hidden');
+};
+
+function clearEraser() {
+  $('eraserMask').getContext('2d').clearRect(0, 0, $('eraserMask').width, $('eraserMask').height);
+  const fctx = fullResMaskCanvas.getContext('2d');
+  fctx.fillStyle = '#000000'; // El algoritmo asume fondo negro y manchas blancas
+  fctx.fillRect(0, 0, fullResMaskCanvas.width, fullResMaskCanvas.height);
+}
+
+function getEraserPos(e) {
+  const r = $('eraserCanvas').getBoundingClientRect();
+  const scaleX = $('eraserCanvas').width / r.width;
+  const scaleY = $('eraserCanvas').height / r.height;
+  return { x: (e.clientX - r.left) * scaleX, y: (e.clientY - r.top) * scaleY };
+}
+
+function drawEraser(p1, p2) {
+  const brushSizeUI = 24; // Tamaño del pincel en la pantalla
+  
+  // Dibujar en pantalla (rojo semi-transparente)
+  let ctx = $('eraserMask').getContext('2d');
+  ctx.strokeStyle = 'rgba(231, 76, 60, 0.6)';
+  ctx.lineWidth = brushSizeUI;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+  
+  // Dibujar en la matriz matemática real (blanco puro)
+  let fctx = fullResMaskCanvas.getContext('2d');
+  fctx.strokeStyle = '#ffffff';
+  fctx.lineWidth = brushSizeUI / eraserScale;
+  fctx.lineCap = 'round';
+  fctx.lineJoin = 'round';
+  fctx.beginPath();
+  fctx.moveTo(p1.x / eraserScale, p1.y / eraserScale);
+  fctx.lineTo(p2.x / eraserScale, p2.y / eraserScale);
+  fctx.stroke();
+}
+
+const eArea = $('eraserArea');
+eArea.addEventListener('pointerdown', (e) => {
+  isErasing = true;
+  lastEPos = getEraserPos(e);
+  eArea.setPointerCapture(e.pointerId);
+  drawEraser(lastEPos, lastEPos);
+});
+eArea.addEventListener('pointermove', (e) => {
+  if(!isErasing) return;
+  e.preventDefault();
+  const pos = getEraserPos(e);
+  drawEraser(lastEPos, pos);
+  lastEPos = pos;
+});
+eArea.addEventListener('pointerup', () => isErasing = false);
+eArea.addEventListener('pointercancel', () => isErasing = false);
+
+$('eraserCancel').onclick = () => { $('eraserModal').classList.add('hidden'); };
+$('eraserClear').onclick = () => { clearEraser(); };
+
+$('eraserApply').onclick = () => {
+  setStatus('Eliminando detalles por arte de magia…');
+  $('eraserModal').classList.add('hidden');
+  
+  setTimeout(() => {
+    const pg = pages[pages.length-1];
+    
+    // Leemos la imagen original y la máscara
+    let src = cv.imread(pg.warped);
+    let mask = cv.imread(fullResMaskCanvas);
+    cv.cvtColor(mask, mask, cv.COLOR_RGBA2GRAY);
+    
+    // El motor de OpenCV rellena la máscara usando los pixeles vecinos (Telea algorithm)
+    let dst = new cv.Mat();
+    cv.inpaint(src, mask, dst, 5, cv.INPAINT_TELEA);
+    
+    const outCnv = document.createElement('canvas');
+    cv.imshow(outCnv, dst);
+    pg.warped = outCnv; // Actualizamos la versión enderezada
+    
+    src.delete(); mask.delete(); dst.delete();
+    
+    // Re-renderizamos para que el filtro vuelva a aplanar el color encima de la corrección
+    renderPageFilter(pages.length-1);
+    preview.src = pg.dataUrl;
+    renderThumbs();
+    setStatus('Borrador aplicado. La magia se ha completado.');
+  }, 50);
+};
+
+/* ---------- FIN Borrador Mágico ---------- */
+
 
 $('btnClear').onclick=()=>{ pages.length=0; renderThumbs(); showCam(); setStatus('Vaciado.'); };
 
