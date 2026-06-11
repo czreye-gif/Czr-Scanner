@@ -6,9 +6,10 @@
 <title>Escáner — Despacho</title>
 <style>
   :root{
-    --ink:#14161a; --paper:#fbfaf7; --line:#d8d2c4;
-    --sello:#1f5c4d; --sello-soft:#e6efe9;
-    --warn:#9a4a2f; --muted:#6b665c;
+    --ink:#16181c; --paper:#faf8f4; --line:#e4ded2;
+    --sello:#1f5c4d; --sello-soft:#e6efe9; --sello-deep:#174a3e;
+    --warn:#9a4a2f; --muted:#6f695e; --card:#ffffff;
+    --r:10px; --rs:8px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -17,87 +18,167 @@
     background:var(--paper); color:var(--ink);
     -webkit-font-smoothing:antialiased; line-height:1.45;
   }
-  /* ---- header: como el membrete de un sello fiscal ---- */
+  /* ---- header: membrete fiscal ---- */
   header{
     border-bottom:2px solid var(--ink);
-    padding:18px 20px 14px;
+    padding:14px 18px 11px;
     display:flex; align-items:baseline; justify-content:space-between; gap:12px;
   }
-  .brand{display:flex; flex-direction:column}
   .brand h1{
     font-family:"SF Mono",ui-monospace,Menlo,monospace;
-    font-size:15px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+    font-size:14px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
   }
-  .brand span{font-size:11px; color:var(--muted); letter-spacing:.12em; text-transform:uppercase}
+  .brand span{font-size:10px; color:var(--muted); letter-spacing:.14em; text-transform:uppercase}
   .folio{
     font-family:"SF Mono",ui-monospace,Menlo,monospace;
-    font-size:11px; color:var(--sello); border:1px solid var(--sello);
-    padding:3px 8px; border-radius:2px; white-space:nowrap;
+    font-size:10px; color:var(--sello); border:1px solid var(--sello);
+    padding:3px 8px; border-radius:4px; white-space:nowrap;
   }
-  main{max-width:760px; margin:0 auto; padding:18px 16px 80px}
+  main{max-width:720px; margin:0 auto; padding:16px 14px 90px}
 
-  .field{margin-bottom:14px}
+  .field{margin-bottom:12px}
   label.lbl{
-    display:block; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--muted); margin-bottom:6px;
+    display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:5px;
   }
   input[type=text]{
-    width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:3px;
-    font-family:"SF Mono",ui-monospace,monospace; font-size:14px; background:#fff;
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:var(--rs);
+    font-family:"SF Mono",ui-monospace,monospace; font-size:14px; background:var(--card);
     text-transform:uppercase; letter-spacing:.05em;
   }
   input[type=text]:focus{outline:none; border-color:var(--sello); box-shadow:0 0 0 3px var(--sello-soft)}
 
-  .stage{
-    border:1px solid var(--line); border-radius:4px; background:#000;
-    aspect-ratio:3/4; max-height:52vh; margin:0 auto; overflow:hidden;
-    display:flex; align-items:center; justify-content:center; position:relative;
-  }
-  .stage video,.stage canvas,.stage img{max-width:100%; max-height:100%; display:block}
-  .stage .ph{color:#777; font-size:13px; padding:0 24px; text-align:center}
-
-  .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
+  /* ---- botones base: compactos ---- */
   button{
-    flex:1; min-width:130px; padding:13px 14px; border:none; border-radius:3px;
-    font-size:13px; font-weight:600; letter-spacing:.03em; cursor:pointer;
-    font-family:inherit; transition:transform .04s, background .15s;
+    border:none; border-radius:var(--rs); cursor:pointer; font-family:inherit;
+    font-size:13px; font-weight:600; letter-spacing:.01em;
+    padding:0 14px; height:42px;
+    transition:transform .05s, opacity .15s, background .15s;
   }
-  button:active{transform:translateY(1px)}
-  button:disabled{opacity:.4; cursor:not-allowed}
-  .b-primary{background:var(--ink); color:var(--paper)}
+  button:active{transform:scale(.98)}
+  button:disabled{opacity:.35; cursor:not-allowed}
   .b-sello{background:var(--sello); color:#fff}
-  .b-ghost{background:#fff; color:var(--ink); border:1px solid var(--line)}
+  .b-sello:active{background:var(--sello-deep)}
+  .b-primary{background:var(--ink); color:var(--paper)}
+  .b-ghost{background:var(--card); color:var(--ink); border:1px solid var(--line)}
 
-  .pages{margin-top:18px}
+  /* ---- hero de captura ---- */
+  .capture-hero{
+    border:1.5px dashed var(--line); border-radius:var(--r); background:var(--card);
+    padding:28px 20px 22px; text-align:center; margin-bottom:12px;
+  }
+  .hero-icon{font-size:40px; margin-bottom:6px}
+  .hero-text{font-size:13px; color:var(--muted); margin:0 auto 18px; max-width:330px}
+  .capture-hero button{display:block; width:100%}
+  #btnCapture{height:50px; font-size:14px; margin-bottom:8px}
+  #btnGallery{height:40px; font-size:12px; font-weight:500}
+
+  /* ---- vista revisión ---- */
+  .rev-banner{
+    font-family:"SF Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--sello);
+    padding:0 2px 8px; text-align:center;
+  }
+  .rev-stage{
+    border:1px solid var(--line); border-radius:var(--r); background:#eceadf;
+    display:flex; justify-content:center; align-items:center;
+    margin-bottom:10px; height:56vh; overflow:hidden; touch-action:none; position:relative;
+  }
+  .rev-stage img{
+    display:block; max-width:96%; max-height:94%; width:auto; height:auto;
+    box-shadow:0 3px 22px rgba(20,24,28,.22); background:#fff;
+    transform-origin:center center; will-change:transform;
+  }
+  .rev-stage img.hidden{display:block}
+  .zoom-ctrls{position:absolute; bottom:10px; right:10px; display:flex; gap:6px; z-index:5}
+  .zoom-ctrls button{
+    min-width:38px; height:38px; padding:0 11px; border-radius:19px;
+    background:rgba(22,24,28,.78); color:#fff; font-size:17px;
+    backdrop-filter:blur(5px); box-shadow:0 2px 10px rgba(0,0,0,.22);
+  }
+  .zoom-ctrls #zFit{font-size:11px; letter-spacing:.05em}
+
+  /* ---- filtros: control segmentado ---- */
+  .filters{
+    display:flex; background:var(--card); border:1px solid var(--line);
+    border-radius:var(--rs); padding:3px; gap:2px; margin-bottom:10px;
+  }
+  .f-btn{
+    flex:1; height:34px; padding:0 6px; border-radius:6px;
+    font-size:12px; font-weight:600; color:var(--muted); background:transparent;
+    white-space:nowrap;
+  }
+  .f-btn.f-active{background:var(--ink); color:var(--paper)}
+
+  /* ---- barra de acciones de revisión ---- */
+  .actions{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px}
+  .actions .full{grid-column:1 / -1}
+  .a-btn{height:42px; font-size:13px}
+
+  .pages{margin-top:16px}
   .pages h2{
-    font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
-    border-bottom:1px solid var(--line); padding-bottom:6px; margin-bottom:10px;
-    display:flex; justify-content:space-between;
+    font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+    border-bottom:1px solid var(--line); padding-bottom:5px; margin-bottom:9px;
+    display:flex; justify-content:space-between; font-weight:600;
   }
   .thumbs{display:flex; gap:8px; flex-wrap:wrap}
-  .thumb{position:relative; width:84px; height:112px; border:1px solid var(--line); border-radius:3px; overflow:hidden; background:#fff}
+  .thumb{position:relative; width:76px; height:101px; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff}
   .thumb img{width:100%; height:100%; object-fit:cover}
   .thumb .num{
     position:absolute; top:0; left:0; background:var(--ink); color:var(--paper);
-    font-family:"SF Mono",monospace; font-size:10px; padding:1px 5px; border-bottom-right-radius:3px;
+    font-family:"SF Mono",monospace; font-size:9px; padding:1px 5px; border-bottom-right-radius:5px;
   }
   .thumb .del{
-    position:absolute; bottom:2px; right:2px; background:var(--warn); color:#fff;
-    border:none; width:20px; height:20px; border-radius:50%; font-size:12px; cursor:pointer;
-    line-height:1; padding:0; flex:none; min-width:0;
+    position:absolute; bottom:3px; right:3px; background:rgba(154,74,47,.92); color:#fff;
+    width:22px; height:22px; min-width:0; padding:0; border-radius:50%; font-size:12px; line-height:1;
   }
-  .toggle{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); margin-top:12px}
+  .toggle{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); margin-top:10px}
   .toggle input{width:16px; height:16px; accent-color:var(--sello)}
   .status{
-    font-family:"SF Mono",monospace; font-size:12px; color:var(--sello);
-    min-height:18px; margin-top:10px;
+    font-family:"SF Mono",monospace; font-size:11px; color:var(--sello);
+    min-height:16px; margin-top:8px;
   }
   .status.err{color:var(--warn)}
   footer{
     position:fixed; bottom:0; left:0; right:0; background:var(--paper);
-    border-top:2px solid var(--ink); padding:10px 16px;
+    border-top:2px solid var(--ink); padding:10px 14px;
+    transition:transform .2s;
   }
-  footer .inner{max-width:760px; margin:0 auto; display:flex; gap:10px}
+  footer.hidden{display:none}
+  footer .inner{max-width:720px; margin:0 auto; display:flex; gap:8px}
+  footer button{flex:1; height:44px}
+
+  /* ---- editor de esquinas: pantalla completa con lupa ---- */
+  .corner-editor{
+    position:fixed; inset:0; background:#101214; z-index:60;
+    display:flex; flex-direction:column;
+  }
+  .corner-editor.hidden{display:none}
+  .ce-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; color:#e8e5de;
+  }
+  .ce-head .t{font-size:13px; font-weight:600; letter-spacing:.02em}
+  .ce-head .s{font-size:11px; color:#8b877e; margin-top:2px}
+  .ce-wrap{
+    flex:1; position:relative; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    touch-action:none; padding:8px;
+  }
+  .ce-frame{position:relative; max-width:100%; max-height:100%}
+  .ce-frame canvas{display:block; max-width:100%; max-height:calc(100vh - 170px); width:auto; height:auto; border-radius:4px}
+  .ce-frame svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible}
+  .ce-loupe{
+    position:absolute; width:128px; height:128px; border-radius:50%;
+    border:2.5px solid #fff; box-shadow:0 4px 18px rgba(0,0,0,.5);
+    overflow:hidden; display:none; pointer-events:none; z-index:5; background:#000;
+  }
+  .ce-loupe canvas{width:128px; height:128px}
+  .ce-actions{display:flex; gap:8px; padding:12px 16px 18px}
+  .ce-actions button{flex:1; height:46px}
+  .ce-cancel{background:rgba(255,255,255,.08); color:#e8e5de; border:1px solid rgba(255,255,255,.15)}
+  .ce-apply{background:var(--sello); color:#fff}
+
   .hidden{display:none}
 </style>
 </head>
@@ -116,33 +197,81 @@
     <input type="text" id="rfc" placeholder="XAXX010101000" maxlength="13" autocomplete="off">
   </div>
 
-  <div class="stage" id="stage">
-    <span class="ph" id="ph">Activa la cámara o sube una foto del documento.</span>
-    <video id="video" class="hidden" playsinline></video>
+  <!-- ===== VISTA CÁMARA (usa la cámara nativa de la MatePad) ===== -->
+  <section id="viewCam">
+    <div class="capture-hero">
+      <div class="hero-icon">📄</div>
+      <div class="hero-text">Toma la foto del documento con la cámara de tu dispositivo. Se detecta y recorta solo.</div>
+      <button class="b-sello b-big" id="btnCapture">📷 Tomar foto del documento</button>
+      <input type="file" id="fileCapture" accept="image/*" capture="environment" class="hidden">
+      <button class="b-ghost" id="btnGallery">Elegir de la galería</button>
+      <input type="file" id="fileGallery" accept="image/*" class="hidden">
+    </div>
+
+    <label class="toggle">
+      <input type="checkbox" id="ocr"> Reconocer texto (OCR) — hace el PDF buscable, tarda más
+    </label>
+
+    <div class="pages hidden" id="pagesBox">
+      <h2><span>Páginas capturadas</span><span id="count">0</span></h2>
+      <div class="thumbs" id="thumbs"></div>
+    </div>
+    <!-- canvas de trabajo oculto (se conserva para procesar) -->
     <canvas id="work" class="hidden"></canvas>
-    <img id="preview" class="hidden" alt="">
-  </div>
+  </section>
 
-  <div class="row">
-    <button class="b-sello" id="btnCam">Activar cámara</button>
-    <button class="b-ghost" id="btnFile">Subir foto</button>
-    <input type="file" id="file" accept="image/*" class="hidden">
-  </div>
-  <div class="row">
-    <button class="b-primary" id="btnShot" disabled>Capturar página</button>
-  </div>
-
-  <label class="toggle">
-    <input type="checkbox" id="ocr"> Reconocer texto (OCR) — hace el PDF buscable, tarda más
-  </label>
+  <!-- ===== VISTA REVISIÓN ===== -->
+  <section id="viewReview" class="hidden">
+    <div class="rev-banner" id="revBanner">Página 1</div>
+    <div class="rev-stage" id="revStage">
+      <img id="preview" alt="Página capturada">
+      <div class="zoom-ctrls">
+        <button id="zOut" type="button">−</button>
+        <button id="zFit" type="button">Ajustar</button>
+        <button id="zIn" type="button">+</button>
+      </div>
+    </div>
+    <div class="filters">
+      <button class="f-btn" id="f-orig">Original</button>
+      <button class="f-btn f-active" id="f-magic">Mejorado</button>
+      <button class="f-btn" id="f-gris">Gris</button>
+      <button class="f-btn" id="f-byn">B/N</button>
+    </div>
+    <div class="actions">
+      <button class="b-ghost a-btn" id="btnCorners">⛶ Esquinas</button>
+      <button class="b-ghost a-btn" id="btnRetake">↺ Rehacer</button>
+      <button class="b-primary a-btn" id="btnMore">+ Otra página</button>
+      <button class="b-sello a-btn" id="btnFinish">✓ Generar PDF</button>
+    </div>
+    <div class="rev-thumbs-wrap pages hidden" id="revPagesBox">
+      <h2><span>Páginas</span><span id="revCount">0</span></h2>
+      <div class="thumbs" id="revThumbs"></div>
+    </div>
+  </section>
 
   <div class="status" id="status"></div>
-
-  <div class="pages hidden" id="pagesBox">
-    <h2><span>Páginas capturadas</span><span id="count">0</span></h2>
-    <div class="thumbs" id="thumbs"></div>
-  </div>
 </main>
+
+<!-- ===== EDITOR DE ESQUINAS (pantalla completa) ===== -->
+<div id="cornerModal" class="corner-editor hidden">
+  <div class="ce-head">
+    <div>
+      <div class="t">Ajustar esquinas</div>
+      <div class="s">Arrastra cada esquina · la lupa muestra el punto exacto</div>
+    </div>
+  </div>
+  <div class="ce-wrap" id="cornerArea">
+    <div class="ce-frame">
+      <canvas id="cornerCanvas"></canvas>
+      <svg id="cornerSvg"></svg>
+    </div>
+    <div class="ce-loupe" id="loupe"><canvas id="loupeCanvas" width="128" height="128"></canvas></div>
+  </div>
+  <div class="ce-actions">
+    <button class="ce-cancel" id="cornerCancel">Cancelar</button>
+    <button class="ce-apply" id="cornerApply">Aplicar recorte</button>
+  </div>
+</div>
 
 <footer>
   <div class="inner">
@@ -160,7 +289,7 @@ let stream = null;
 let cvReady = false;
 
 const $ = id => document.getElementById(id);
-const stage=$('stage'), ph=$('ph'), video=$('video'), work=$('work'), preview=$('preview');
+const work=$('work'), preview=$('preview');
 const status=$('status');
 
 function setStatus(msg, err=false){ status.textContent=msg; status.className='status'+(err?' err':''); }
@@ -171,43 +300,48 @@ function loadCV(){
   return new Promise((res,rej)=>{
     if(cvReady) return res();
     setStatus('Cargando motor de detección…');
-    const s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/opencv.js/4.8.0/opencv.js';
-    s.onload=()=>{
+    const sources=[
+      'https://docs.opencv.org/4.10.0/opencv.js',
+      'https://docs.opencv.org/4.8.0/opencv.js',
+      'https://cdn.jsdelivr.net/npm/@techstark/opencv-js@4.10.0-release.1/dist/opencv.js'
+    ];
+    let idx=0;
+    const ready=()=>{
       if(window.cv && cv.getBuildInformation){ cvReady=true; setStatus(''); res(); }
       else { cv['onRuntimeInitialized']=()=>{ cvReady=true; setStatus(''); res(); }; }
     };
-    s.onerror=()=>rej(new Error('No se pudo cargar OpenCV'));
-    document.body.appendChild(s);
+    const tryNext=()=>{
+      if(idx>=sources.length){ rej(new Error('No se pudo cargar OpenCV desde ninguna fuente')); return; }
+      const s=document.createElement('script');
+      s.src=sources[idx++];
+      s.onload=ready;
+      s.onerror=()=>{ setStatus('Reintentando con otra fuente…'); tryNext(); };
+      document.body.appendChild(s);
+    };
+    tryNext();
   });
 }
 
-/* ---------- cámara ---------- */
-$('btnCam').onclick = async ()=>{
-  try{
-    stream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
-    video.srcObject = stream; await video.play();
-    ph.classList.add('hidden'); preview.classList.add('hidden');
-    video.classList.remove('hidden');
-    $('btnShot').disabled=false;
-    setStatus('Cámara lista. Encuadra el documento y captura.');
-  }catch(e){ setStatus('No se pudo abrir la cámara. Usa "Subir foto".', true); }
-};
+/* ---------- captura con cámara nativa de la MatePad ---------- */
 
-/* ---------- subir archivo ---------- */
-$('btnFile').onclick = ()=> $('file').click();
-$('file').onchange = (e)=>{
-  const f=e.target.files[0]; if(!f) return;
+// el botón principal abre la cámara del sistema (con flash y buena definición)
+$('btnCapture').onclick = ()=> $('fileCapture').click();
+$('btnGallery').onclick = ()=> $('fileGallery').click();
+
+function handleIncomingFile(e){
+  const f=e.target.files[0];
+  e.target.value=''; // permite volver a elegir la misma foto
+  if(!f) return;
+  setStatus('Procesando imagen…');
   const img=new Image();
-  img.onload=()=> processSource(img, img.naturalWidth, img.naturalHeight);
+  img.onload=()=>{
+    processSource(img, img.naturalWidth, img.naturalHeight);
+  };
+  img.onerror=()=> setStatus('No se pudo leer la imagen.', true);
   img.src=URL.createObjectURL(f);
-};
-
-/* ---------- capturar de la cámara ---------- */
-$('btnShot').onclick = ()=>{
-  if(video.classList.contains('hidden')) return;
-  processSource(video, video.videoWidth, video.videoHeight);
-};
+}
+$('fileCapture').onchange = handleIncomingFile;
+$('fileGallery').onchange = handleIncomingFile;
 
 /* ---------- pipeline: detectar bordes + enderezar + limpiar ---------- */
 async function processSource(src, w, h){
@@ -217,53 +351,97 @@ async function processSource(src, w, h){
     work.width=w; work.height=h;
     work.getContext('2d').drawImage(src,0,0,w,h);
 
-    let img = cv.imread(work);
-    let gray=new cv.Mat(), blur=new cv.Mat(), edges=new cv.Mat();
-    cv.cvtColor(img, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blur, new cv.Size(5,5), 0);
-    cv.Canny(blur, edges, 60, 180);
-    cv.dilate(edges, edges, cv.Mat.ones(3,3,cv.CV_8U));
+    let bestQuad=null;
 
-    let contours=new cv.MatVector(), hier=new cv.Mat();
-    cv.findContours(edges, contours, hier, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+    // ---- detección robusta sobre versión reducida ----
+    {
+      const DW=500, sc=DW/w, dw=DW, dh=Math.round(h*sc);
+      const small=document.createElement('canvas'); small.width=dw; small.height=dh;
+      small.getContext('2d').drawImage(work,0,0,dw,dh);
 
-    let best=null, bestArea=w*h*0.18; // mínimo 18% del cuadro
-    for(let i=0;i<contours.size();i++){
-      const c=contours.get(i), peri=cv.arcLength(c,true), approx=new cv.Mat();
-      cv.approxPolyDP(c, approx, 0.02*peri, true);
-      const area=Math.abs(cv.contourArea(approx));
-      if(approx.rows===4 && area>bestArea){ if(best)best.delete(); best=approx; bestArea=area; }
-      else approx.delete();
-      c.delete();
+      let src=cv.imread(small), gray=new cv.Mat();
+      cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
+
+      const candidates=[];
+      const collect=(mat)=>{
+        let contours=new cv.MatVector(), hier=new cv.Mat();
+        cv.findContours(mat,contours,hier,cv.RETR_LIST,cv.CHAIN_APPROX_SIMPLE);
+        const minA=dw*dh*0.10, maxA=dw*dh*0.97; // 97%: descarta el marco de la imagen misma
+        for(let i=0;i<contours.size();i++){
+          const c=contours.get(i);
+          const area=Math.abs(cv.contourArea(c));
+          if(area>minA && area<maxA){
+            // casco convexo + aproximación con tolerancia creciente hasta dar 4 puntos
+            let hull=new cv.Mat();
+            cv.convexHull(c,hull);
+            const peri=cv.arcLength(hull,true);
+            for(let eps=0.02; eps<=0.12; eps+=0.02){
+              const ap=new cv.Mat();
+              cv.approxPolyDP(hull,ap,eps*peri,true);
+              if(ap.rows===4){
+                const pts=[]; for(let k=0;k<4;k++) pts.push({x:ap.data32S[k*2],y:ap.data32S[k*2+1]});
+                candidates.push({area, pts});
+                ap.delete(); break;
+              }
+              ap.delete();
+            }
+            hull.delete();
+          }
+          c.delete();
+        }
+        contours.delete(); hier.delete();
+      };
+
+      // método A: bordes (Canny)
+      let edges=new cv.Mat();
+      cv.Canny(gray,edges,40,120);
+      cv.dilate(edges,edges,cv.Mat.ones(3,3,cv.CV_8U));
+      collect(edges); edges.delete();
+
+      // método B: umbral Otsu (papel claro sobre fondo más oscuro)
+      let bw=new cv.Mat();
+      cv.threshold(gray,bw,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU);
+      collect(bw); bw.delete();
+
+      src.delete(); gray.delete();
+
+      if(candidates.length){
+        candidates.sort((a,b)=>b.area-a.area);
+        bestQuad=candidates[0].pts.map(p=>({x:p.x/sc, y:p.y/sc}));
+      }
     }
 
-    let outCanvas;
-    if(best){
-      outCanvas = warp(img, best); // enderezar a rectángulo
-      best.delete();
-    }else{
-      outCanvas = document.createElement('canvas');
-      outCanvas.width=w; outCanvas.height=h;
-      outCanvas.getContext('2d').drawImage(src,0,0,w,h);
-      setStatus('No detecté bordes claros — guardé la imagen completa.');
-    }
+    // si no detecta (ej. foto del modo escanear ya recortada), usa el marco completo
+    const m=Math.round(Math.min(w,h)*0.01);
+    const quad = bestQuad ? orderQuad(bestQuad)
+                          : [{x:m,y:m},{x:w-m,y:m},{x:w-m,y:h-m},{x:m,y:h-m}];
 
-    // realce tipo "documento": gris + contraste
-    enhance(outCanvas);
-
-    addPage(outCanvas.toDataURL('image/jpeg',0.85), outCanvas.width, outCanvas.height);
-    img.delete(); gray.delete(); blur.delete(); edges.delete(); contours.delete(); hier.delete();
-    setStatus(best?'Página capturada y enderezada.':'Página capturada.');
+    // guardamos el CRUDO a color + esquinas; el enderezado se hace al renderizar
+    addPage(work2canvas(work), quad, !!bestQuad);
   }catch(e){ setStatus('Error al procesar: '+e.message, true); }
 }
 
-/* corrección de perspectiva a partir de 4 esquinas */
-function warp(img, quad){
-  const pts=[]; for(let i=0;i<4;i++) pts.push({x:quad.data32S[i*2], y:quad.data32S[i*2+1]});
-  pts.sort((a,b)=>a.y-b.y);
-  const top=pts.slice(0,2).sort((a,b)=>a.x-b.x);
-  const bot=pts.slice(2,4).sort((a,b)=>a.x-b.x);
-  const [tl,tr]=top,[bl,br]=bot;
+// copia el canvas de trabajo a uno independiente
+function work2canvas(srcCanvas){
+  const c=document.createElement('canvas'); c.width=srcCanvas.width; c.height=srcCanvas.height;
+  c.getContext('2d').drawImage(srcCanvas,0,0);
+  return c;
+}
+
+// ordena 4 puntos como TL, TR, BR, BL
+function orderQuad(pts){
+  const s=pts.slice().sort((a,b)=>a.y-b.y);
+  const top=s.slice(0,2).sort((a,b)=>a.x-b.x);
+  const bot=s.slice(2,4).sort((a,b)=>a.x-b.x);
+  return [top[0], top[1], bot[1], bot[0]]; // TL,TR,BR,BL
+}
+
+// endereza un canvas crudo usando 4 esquinas (TL,TR,BR,BL) -> nuevo canvas
+function warpCanvas(srcCanvas, quad){
+  if(!(window.cv && cv.imread)) return srcCanvas;
+  let img=cv.imread(srcCanvas);
+  const [tl,tr,br,bl]=quad;
   const dist=(p,q)=>Math.hypot(p.x-q.x,p.y-q.y);
   const W=Math.max(dist(tl,tr),dist(bl,br))|0;
   const H=Math.max(dist(tl,bl),dist(tr,br))|0;
@@ -272,44 +450,361 @@ function warp(img, quad){
   const M=cv.getPerspectiveTransform(srcM,dstM), dst=new cv.Mat();
   cv.warpPerspective(img,dst,M,new cv.Size(W,H));
   const cnv=document.createElement('canvas'); cv.imshow(cnv,dst);
-  srcM.delete();dstM.delete();M.delete();dst.delete();
+  img.delete();srcM.delete();dstM.delete();M.delete();dst.delete();
+  // rebanar un filo fino (~1.2%): elimina el borde oscuro que deja el corte
+  const inset=Math.max(2, Math.round(Math.min(W,H)*0.012));
+  if(W-inset*2>50 && H-inset*2>50){
+    const out=document.createElement('canvas');
+    out.width=W-inset*2; out.height=H-inset*2;
+    out.getContext('2d').drawImage(cnv,-inset,-inset);
+    return out;
+  }
   return cnv;
 }
 
-/* realce de legibilidad */
-function enhance(cnv){
-  const ctx=cnv.getContext('2d'), d=ctx.getImageData(0,0,cnv.width,cnv.height), p=d.data;
-  for(let i=0;i<p.length;i+=4){
-    let g=0.299*p[i]+0.587*p[i+1]+0.114*p[i+2];
-    g=(g-128)*1.25+128+8; g=g<0?0:g>255?255:g; // contraste + brillo leve
-    p[i]=p[i+1]=p[i+2]=g;
+/* ---------- filtros estilo escáner premium ---------- */
+// Base de todos: estirado de niveles. Detecta el tono real del papel y de la
+// tinta en un histograma y los lleva a blanco/negro puros. Global, monotónico,
+// nunca mancha ni pixelea.
+function computeLevels(canvas){
+  const sw=Math.min(300, canvas.width), sh=Math.max(1, Math.round(canvas.height*sw/canvas.width));
+  const s=document.createElement('canvas'); s.width=sw; s.height=sh;
+  const sctx=s.getContext('2d');
+  sctx.drawImage(canvas,0,0,sw,sh);
+  const d=sctx.getImageData(0,0,sw,sh).data;
+  const hist=new Float64Array(256);
+  for(let i=0;i<d.length;i+=4){
+    hist[(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])|0]++;
+  }
+  const total=sw*sh;
+  // negro: percentil 1 inferior. blanco: percentil 20 superior (el papel domina la imagen)
+  let acc=0, lo=0, hi=255;
+  for(let v=0;v<256;v++){ acc+=hist[v]; if(acc>=total*0.01){ lo=v; break; } }
+  acc=0;
+  for(let v=255;v>=0;v--){ acc+=hist[v]; if(acc>=total*0.20){ hi=v; break; } }
+  if(hi-lo<30){ lo=0; hi=255; } // imagen rara: no estirar
+  return {lo, hi};
+}
+
+function applyFilter(srcCanvas, mode){
+  const c=document.createElement('canvas');
+  c.width=srcCanvas.width; c.height=srcCanvas.height;
+  const ctx=c.getContext('2d');
+  ctx.drawImage(srcCanvas,0,0);
+  if(mode==='orig') return c;
+
+  const {lo,hi}=computeLevels(srcCanvas);
+  const range=hi-lo;
+  const W=c.width, H=c.height;
+  const d=ctx.getImageData(0,0,W,H), p=d.data;
+  const stretch=v=>{ v=(v-lo)*255/range; return v<0?0:v>255?255:v; };
+
+  if(mode==='magic'){
+    // Mejorado: estirar cada canal con los mismos niveles -> papel blanco,
+    // tinta negra, sellos/colores conservados y más vivos
+    for(let i=0;i<p.length;i+=4){
+      p[i]=stretch(p[i]); p[i+1]=stretch(p[i+1]); p[i+2]=stretch(p[i+2]);
+    }
+  } else if(mode==='gris'){
+    for(let i=0;i<p.length;i+=4){
+      const g=stretch(0.299*p[i]+0.587*p[i+1]+0.114*p[i+2]);
+      p[i]=p[i+1]=p[i+2]=g;
+    }
+  } else if(mode==='byn'){
+    // binarizar sobre la luminancia ya estirada + despeckle
+    const bin=new Uint8Array(W*H);
+    for(let i=0,j=0;i<p.length;i+=4,j++){
+      bin[j]=stretch(0.299*p[i]+0.587*p[i+1]+0.114*p[i+2])>165?255:0;
+    }
+    // quitar puntos negros aislados (ruido), conservar trazos
+    const clean=new Uint8Array(W*H);
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        const j=y*W+x;
+        if(bin[j]===255){ clean[j]=255; continue; }
+        let blacks=0;
+        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+          const ny=y+dy, nx=x+dx;
+          if(ny>=0&&ny<H&&nx>=0&&nx<W && bin[ny*W+nx]===0) blacks++;
+        }
+        clean[j]=(blacks<=2)?255:0;
+      }
+    }
+    for(let i=0,j=0;i<p.length;i+=4,j++){ p[i]=p[i+1]=p[i+2]=clean[j]; }
   }
   ctx.putImageData(d,0,0);
+  return c;
+}
+
+/* ---------- zoom en vista previa ---------- */
+(function(){
+  const img=$('preview'), box=$('revStage');
+  let scale=1, tx=0, ty=0;
+  let startDist=0, startScale=1, lastX=0, lastY=0, panning=false;
+
+  function apply(){ img.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`; }
+  function reset(){ scale=1; tx=0; ty=0; apply(); }
+  // resetear cada vez que cambie la imagen
+  const obs=new MutationObserver(reset);
+  obs.observe(img,{attributes:true, attributeFilter:['src']});
+
+  const dist=(t)=>Math.hypot(t[0].clientX-t[1].clientX, t[0].clientY-t[1].clientY);
+
+  box.addEventListener('touchstart',(e)=>{
+    if(e.touches.length===2){ startDist=dist(e.touches); startScale=scale; }
+    else if(e.touches.length===1 && scale>1){
+      panning=true; lastX=e.touches[0].clientX; lastY=e.touches[0].clientY;
+    }
+  },{passive:false});
+
+  box.addEventListener('touchmove',(e)=>{
+    if(e.touches.length===2){
+      e.preventDefault();
+      scale=Math.min(5, Math.max(1, startScale*(dist(e.touches)/startDist)));
+      if(scale===1){ tx=0; ty=0; }
+      apply();
+    } else if(panning && e.touches.length===1){
+      e.preventDefault();
+      tx+=e.touches[0].clientX-lastX; ty+=e.touches[0].clientY-lastY;
+      lastX=e.touches[0].clientX; lastY=e.touches[0].clientY;
+      apply();
+    }
+  },{passive:false});
+
+  box.addEventListener('touchend',(e)=>{ if(e.touches.length===0) panning=false; });
+
+  // doble toque: alterna entre 1x y 2.5x
+  let lastTap=0;
+  box.addEventListener('touchend',(e)=>{
+    const now=Date.now();
+    if(now-lastTap<300){ scale = scale>1 ? 1 : 2.5; if(scale===1){tx=0;ty=0;} apply(); }
+    lastTap=now;
+  });
+
+  // soporte mouse (escritorio): rueda para zoom
+  box.addEventListener('wheel',(e)=>{
+    e.preventDefault();
+    scale=Math.min(5, Math.max(1, scale + (e.deltaY<0?0.2:-0.2)));
+    if(scale===1){tx=0;ty=0;} apply();
+  },{passive:false});
+
+  // botones visibles
+  function zoomBy(f){ scale=Math.min(5,Math.max(1, scale*f)); if(scale<=1){scale=1;tx=0;ty=0;} apply(); }
+  $('zIn').onclick =(e)=>{ e.stopPropagation(); zoomBy(1.4); };
+  $('zOut').onclick=(e)=>{ e.stopPropagation(); zoomBy(1/1.4); };
+  $('zFit').onclick=(e)=>{ e.stopPropagation(); reset(); };
+})();
+
+function showCam(){
+  $('viewReview').classList.add('hidden');
+  $('viewCam').classList.remove('hidden');
+  document.querySelector('footer').classList.remove('hidden');
+}
+function showReview(){
+  $('viewCam').classList.add('hidden');
+  $('viewReview').classList.remove('hidden');
+  document.querySelector('footer').classList.add('hidden');
 }
 
 /* ---------- gestión de páginas ---------- */
-function addPage(dataUrl,w,h){
-  pages.push({dataUrl,w,h});
-  preview.src=dataUrl; preview.classList.remove('hidden');
-  video.classList.add('hidden'); ph.classList.add('hidden');
-  renderThumbs();
+let currentFilter='magic'; // filtro por defecto para texto fiscal
+
+// recalcula el enderezado y el filtro de una página
+function renderPageFilter(i){
+  const pg=pages[i];
+  // 1) enderezar el crudo con las esquinas actuales (cacheado si no cambió)
+  if(!pg.warped || pg.warpDirty){
+    pg.warped = warpCanvas(pg.raw, pg.quad);
+    pg.warpDirty=false;
+  }
+  // 2) aplicar filtro
+  const filtered=applyFilter(pg.warped, pg.filter);
+  pg.dataUrl=filtered.toDataURL('image/jpeg',0.95);
+  pg.w=filtered.width; pg.h=filtered.height;
 }
+
+function addPage(rawCanvas, quad, enderezada){
+  const pg={raw:rawCanvas, quad:quad, warped:null, warpDirty:true,
+            filter:currentFilter, dataUrl:'', w:0, h:0};
+  pages.push(pg);
+  renderPageFilter(pages.length-1);
+  preview.src=pg.dataUrl;
+  const mp=((pg.w*pg.h)/1e6).toFixed(1);
+  $('revBanner').textContent='Página '+pages.length+(enderezada?' · auto':' · sin recorte')+' · '+pg.w+'×'+pg.h+' ('+mp+' MP)';
+  markFilterButtons(pg.filter);
+  renderThumbs();
+  showReview();
+  setStatus('Revisa la página. Ajusta esquinas o filtro si hace falta.');
+}
+
+// aplica filtro a la página que se está revisando (la última)
+function setReviewFilter(mode){
+  if(!pages.length) return;
+  const i=pages.length-1;
+  pages[i].filter=mode; currentFilter=mode;
+  markFilterButtons(mode);
+  if(mode==='byn') setStatus('Procesando B/N…');
+  // dejar pintar el estado antes del cálculo pesado
+  setTimeout(()=>{
+    renderPageFilter(i);
+    preview.src=pages[i].dataUrl;
+    renderThumbs();
+    setStatus(mode==='byn'?'B/N listo.':'');
+  }, 20);
+}
+function markFilterButtons(mode){
+  ['orig','magic','gris','byn'].forEach(m=>{
+    const b=$('f-'+m); if(b) b.classList.toggle('f-active', m===mode);
+  });
+}
+['orig','magic','gris','byn'].forEach(m=>{
+  const b=$('f-'+m); if(b) b.onclick=()=>setReviewFilter(m);
+});
+
 function renderThumbs(){
-  const box=$('pagesBox'), t=$('thumbs');
-  box.classList.toggle('hidden', pages.length===0);
   $('count').textContent=pages.length;
-  t.innerHTML='';
-  pages.forEach((pg,i)=>{
-    const d=document.createElement('div'); d.className='thumb';
-    d.innerHTML=`<span class="num">${String(i+1).padStart(2,'0')}</span><img src="${pg.dataUrl}">`;
-    const x=document.createElement('button'); x.className='del'; x.textContent='×';
-    x.onclick=()=>{ pages.splice(i,1); renderThumbs(); };
-    d.appendChild(x); t.appendChild(d);
+  $('revCount').textContent=pages.length;
+  [['pagesBox','thumbs'],['revPagesBox','revThumbs']].forEach(([boxId,tId])=>{
+    const box=$(boxId), t=$(tId);
+    box.classList.toggle('hidden', pages.length===0);
+    t.innerHTML='';
+    pages.forEach((pg,i)=>{
+      const d=document.createElement('div'); d.className='thumb';
+      d.innerHTML=`<span class="num">${String(i+1).padStart(2,'0')}</span><img src="${pg.dataUrl}">`;
+      const x=document.createElement('button'); x.className='del'; x.textContent='×';
+      x.onclick=()=>{ pages.splice(i,1); renderThumbs(); if(pages.length===0) showCam(); };
+      d.appendChild(x); t.appendChild(d);
+    });
   });
   const has=pages.length>0;
   $('btnPdf').disabled=!has; $('btnClear').disabled=!has;
 }
-$('btnClear').onclick=()=>{ pages.length=0; renderThumbs(); preview.classList.add('hidden'); ph.classList.remove('hidden'); };
+
+/* ---- botones de la vista revisión ---- */
+$('btnRetake').onclick=()=>{           // descarta la última y vuelve a tomar
+  pages.pop(); renderThumbs(); showCam();
+  setStatus('Página descartada. Toma la foto de nuevo.');
+  $('fileCapture').click();
+};
+$('btnMore').onclick=()=>{             // conserva y vuelve a tomar otra
+  showCam();
+  setStatus('Página guardada. Toma la siguiente.');
+  $('fileCapture').click();
+};
+$('btnFinish').onclick=()=>{ $('btnPdf').click(); };
+
+/* ---------- editor de esquinas: pantalla completa + lupa ---------- */
+let cornerPts=[], cornerScale=1, dragIdx=-1, ceRaw=null;
+
+$('btnCorners').onclick=()=>{
+  if(!pages.length) return;
+  const pg=pages[pages.length-1];
+  ceRaw=pg.raw;
+  const cv2=$('cornerCanvas'), ctx=cv2.getContext('2d');
+  // canvas a resolución alta para que se vea nítido (CSS lo escala)
+  const maxW=1100, scale=Math.min(1, maxW/ceRaw.width);
+  cv2.width=Math.round(ceRaw.width*scale); cv2.height=Math.round(ceRaw.height*scale);
+  ctx.drawImage(ceRaw,0,0,cv2.width,cv2.height);
+  cornerScale=scale;
+  // svg con el MISMO sistema de coordenadas que el canvas (sin importar tamaño CSS)
+  $('cornerSvg').setAttribute('viewBox','0 0 '+cv2.width+' '+cv2.height);
+  cornerPts=pg.quad.map(p=>({x:p.x*scale, y:p.y*scale}));
+  dragIdx=-1;
+  drawCorners();
+  $('cornerModal').classList.remove('hidden');
+};
+
+function drawCorners(){
+  const svg=$('cornerSvg'), W=$('cornerCanvas').width;
+  const R=Math.max(18, W*0.035);           // radio de manija proporcional
+  const poly=cornerPts.map(p=>p.x+','+p.y).join(' ');
+  let h='<polygon points="'+poly+'" fill="rgba(31,92,77,0.10)" stroke="#2ecc8f" stroke-width="'+(W*0.004)+'"/>';
+  cornerPts.forEach((p,i)=>{
+    const a=i===dragIdx;
+    h+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(a?R*1.25:R)+'" fill="rgba(46,204,143,'+(a?'0.30':'0.16')+'" stroke="#2ecc8f" stroke-width="'+(W*0.005)+'"/>';
+    h+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(W*0.006)+'" fill="#2ecc8f"/>';
+  });
+  svg.innerHTML=h;
+}
+
+// pointer -> coords del canvas (vía viewBox compartido)
+function cePos(e){
+  const cv2=$('cornerCanvas'), r=cv2.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*(cv2.width/r.width), y:(e.clientY-r.top)*(cv2.height/r.height)};
+}
+
+const ceArea=$('cornerArea');
+ceArea.addEventListener('pointerdown',(e)=>{
+  if(!ceRaw) return;
+  const pos=cePos(e);
+  const W=$('cornerCanvas').width;
+  let nearest=-1, nd=1e9;
+  cornerPts.forEach((p,i)=>{ const d=Math.hypot(p.x-pos.x,p.y-pos.y); if(d<nd){nd=d;nearest=i;} });
+  // agarre generoso: hasta 12% del ancho de distancia
+  if(nd < W*0.12){
+    dragIdx=nearest;
+    ceArea.setPointerCapture(e.pointerId);
+    movePoint(pos); // engancha de inmediato
+    e.preventDefault();
+  }
+});
+ceArea.addEventListener('pointermove',(e)=>{
+  if(dragIdx<0) return;
+  e.preventDefault();
+  movePoint(cePos(e), e.clientX, e.clientY);
+});
+ceArea.addEventListener('pointerup',()=>{ dragIdx=-1; $('loupe').style.display='none'; drawCorners(); });
+ceArea.addEventListener('pointercancel',()=>{ dragIdx=-1; $('loupe').style.display='none'; drawCorners(); });
+
+function movePoint(pos, clientX, clientY){
+  const cv2=$('cornerCanvas');
+  cornerPts[dragIdx]={x:Math.max(0,Math.min(cv2.width,pos.x)), y:Math.max(0,Math.min(cv2.height,pos.y))};
+  drawCorners();
+  updateLoupe(clientX, clientY);
+}
+
+// lupa: muestra ampliado el punto exacto, lejos del dedo
+function updateLoupe(clientX, clientY){
+  if(dragIdx<0) return;
+  const lp=$('loupe'), lc=$('loupeCanvas').getContext('2d');
+  const p=cornerPts[dragIdx];
+  // región del crudo alrededor de la esquina (en coords del crudo)
+  const rx=p.x/cornerScale, ry=p.y/cornerScale;
+  const Z=3, half=128/(2*Z); // zoom 3x
+  lc.fillStyle='#000'; lc.fillRect(0,0,128,128);
+  lc.drawImage(ceRaw, rx-half, ry-half, half*2, half*2, 0, 0, 128, 128);
+  // cruz del punto exacto
+  lc.strokeStyle='#2ecc8f'; lc.lineWidth=1.5;
+  lc.beginPath(); lc.moveTo(64,46); lc.lineTo(64,82); lc.moveTo(46,64); lc.lineTo(82,64); lc.stroke();
+  // posicionar la lupa en la esquina opuesta al dedo
+  const wrap=ceArea.getBoundingClientRect();
+  const onLeft = clientX!=null ? (clientX-wrap.left) < wrap.width/2 : true;
+  const onTop  = clientY!=null ? (clientY-wrap.top)  < wrap.height/2 : true;
+  lp.style.left = onLeft ? 'auto' : '14px';
+  lp.style.right = onLeft ? '14px' : 'auto';
+  lp.style.top = onTop ? 'auto' : '14px';
+  lp.style.bottom = onTop ? '14px' : 'auto';
+  lp.style.display='block';
+}
+
+$('cornerCancel').onclick=()=>{ $('cornerModal').classList.add('hidden'); $('loupe').style.display='none'; };
+$('cornerApply').onclick=()=>{
+  const pg=pages[pages.length-1];
+  pg.quad=orderQuad(cornerPts.map(p=>({x:p.x/cornerScale, y:p.y/cornerScale})));
+  pg.warpDirty=true;
+  $('cornerModal').classList.add('hidden');
+  $('loupe').style.display='none';
+  setStatus('Reaplicando recorte…');
+  setTimeout(()=>{
+    renderPageFilter(pages.length-1);
+    preview.src=pages[pages.length-1].dataUrl;
+    renderThumbs();
+    setStatus('Recorte actualizado.');
+  },20);
+};
+
+
+$('btnClear').onclick=()=>{ pages.length=0; renderThumbs(); showCam(); setStatus('Vaciado.'); };
 
 /* ---------- generar PDF ---------- */
 $('btnPdf').onclick = async ()=>{
@@ -351,8 +846,9 @@ $('btnPdf').onclick = async ()=>{
   }
   const stamp=new Date().toISOString().slice(0,10);
   pdf.save(`${rfc}_${stamp}.pdf`);
-  setStatus('PDF generado: '+rfc+'_'+stamp+'.pdf');
+  setStatus('PDF generado: '+rfc+'_'+stamp+'.pdf — listo para el siguiente cliente.');
   $('btnPdf').disabled=false;
+  showCam();
 };
 </script>
 </body>
