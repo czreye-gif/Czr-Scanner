@@ -452,7 +452,7 @@ function warpCanvas(srcCanvas, quad){
   return cnv;
 }
 
-// CORRECCIÓN MAGISTRAL: Filtros Profesionales con OpenCV nativo
+// CORRECCIÓN EXTREMA: Mapeo de iluminación a baja resolución (Instantáneo)
 function applyFilter(srcCanvas, mode){
   if(mode === 'orig') {
     const c = document.createElement('canvas');
@@ -462,29 +462,34 @@ function applyFilter(srcCanvas, mode){
   }
 
   const src = cv.imread(srcCanvas);
-  // Eliminamos el canal Alpha temporalmente para procesar colores puros sin artefactos
   cv.cvtColor(src, src, cv.COLOR_RGBA2RGB); 
   const dst = new cv.Mat();
 
+  // El secreto de velocidad: Calculamos la iluminación en una imagen pequeñita
+  const smallW = 600;
+  const scale = smallW / src.cols;
+  const smallH = Math.round(src.rows * scale);
+
   if(mode === 'magic' || mode === 'gris'){
-    // 1. ESTIMACIÓN DE ILUMINACIÓN DE FONDO (La magia detrás del "barrido")
-    const bg = new cv.Mat();
+    const smallSrc = new cv.Mat();
+    cv.resize(src, smallSrc, new cv.Size(smallW, smallH), 0, 0, cv.INTER_AREA);
+
+    const bgSmall = new cv.Mat();
     
-    // Dilatación: Borra el texto de la imagen estirando el color del papel que lo rodea
-    const morphSize = Math.max(3, Math.floor(src.cols / 120));
-    const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(morphSize, morphSize));
-    cv.morphologyEx(src, bg, cv.MORPH_DILATE, morphKernel);
+    // Dilatación con matriz pequeña (muy rápido)
+    const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+    cv.morphologyEx(smallSrc, bgSmall, cv.MORPH_DILATE, morphKernel);
     
-    // Difuminado Fuerte: Suaviza la iluminación y las sombras que quedaron
-    let blurSize = Math.max(15, (Math.floor(src.cols / 20) | 1));
-    if(blurSize % 2 === 0) blurSize++;
-    cv.GaussianBlur(bg, bg, new cv.Size(blurSize, blurSize), 0);
+    // Difuminado rápido
+    cv.GaussianBlur(bgSmall, bgSmall, new cv.Size(25, 25), 0);
     
-    // 2. SUBSTRACCIÓN: Al dividir la foto entre su sombra difuminada, la luz se aplana perfecto a blanco
+    // Devolver el mapa de luz al tamaño original (instantáneo por ser interpolación lineal)
+    const bgFull = new cv.Mat();
+    cv.resize(bgSmall, bgFull, new cv.Size(src.cols, src.rows), 0, 0, cv.INTER_LINEAR);
+
+    // Matemáticas finales sobre la foto original
     const divided = new cv.Mat();
-    cv.divide(src, bg, divided, 255);
-    
-    // 3. RECUPERAR TINTA: Incrementamos el contraste general un poco para que el texto resalte (negro puro)
+    cv.divide(src, bgFull, divided, 255);
     divided.convertTo(dst, -1, 1.15, -15);
     
     if(mode === 'gris'){
@@ -492,25 +497,39 @@ function applyFilter(srcCanvas, mode){
       cv.cvtColor(dst, dst, cv.COLOR_GRAY2RGB);
     }
     
-    bg.delete(); morphKernel.delete(); divided.delete();
+    smallSrc.delete(); bgSmall.delete(); morphKernel.delete(); bgFull.delete(); divided.delete();
   } 
   else if(mode === 'byn'){
-    // UMBRAL ADAPTATIVO: Analiza bloques de pixeles, resolviendo el problema de las manchas de sombra grandes
     const gray = new cv.Mat();
     cv.cvtColor(src, gray, cv.COLOR_RGB2GRAY);
     
-    let blockSize = Math.max(15, (Math.floor(src.cols / 15) | 1));
-    if(blockSize % 2 === 0) blockSize++;
+    // Mismo secreto: calcular el promedio local de grises en una miniatura
+    const smallGray = new cv.Mat();
+    cv.resize(gray, smallGray, new cv.Size(smallW, smallH), 0, 0, cv.INTER_AREA);
     
-    // C=12: El píxel debe ser 12 unidades más oscuro que su entorno inmediato para considerarse texto
-    cv.adaptiveThreshold(gray, dst, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, blockSize, 12);
+    const bgSmall = new cv.Mat();
+    cv.GaussianBlur(smallGray, bgSmall, new cv.Size(25, 25), 0);
     
-    // LIMPIEZA DE RUIDO: Elimina puntos negros microscópicos "sal y pimienta" del escaneo
+    const bgFull = new cv.Mat();
+    cv.resize(bgSmall, bgFull, new cv.Size(gray.cols, gray.rows), 0, 0, cv.INTER_LINEAR);
+
+    // Umbral Adaptativo de altísima velocidad operando arrays directos
+    dst.create(gray.rows, gray.cols, cv.CV_8UC1);
+    const gData = gray.data;
+    const bgData = bgFull.data;
+    const outData = dst.data;
+    const C = 10; // Sensibilidad de contraste
+    
+    for(let i=0; i<gData.length; i++){
+      outData[i] = gData[i] < (bgData[i] - C) ? 0 : 255;
+    }
+    
+    // Limpieza microscópica de la tinta final
     const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
     cv.morphologyEx(dst, dst, cv.MORPH_OPEN, morphKernel);
     cv.cvtColor(dst, dst, cv.COLOR_GRAY2RGB);
     
-    gray.delete(); morphKernel.delete();
+    gray.delete(); smallGray.delete(); bgSmall.delete(); bgFull.delete(); morphKernel.delete();
   }
 
   const outCanvas = document.createElement('canvas');
