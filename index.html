@@ -381,19 +381,14 @@ function work2canvas(srcCanvas){
   return c;
 }
 
-// CORRECCIÓN 2: Ordenamiento avanzado por trigonometría (adiós a los moños cruzados)
+// Ordenamiento robusto (Trigonometría contra moños rotados)
 function orderQuad(pts){
-  // Encontrar el centro de gravedad del papel
   const cx = pts.reduce((sum, p) => sum + p.x, 0) / 4;
   const cy = pts.reduce((sum, p) => sum + p.y, 0) / 4;
-
-  // Ordenar radialmente usando arcotangente (inmune a rotaciones extremas)
-  return pts.slice().sort((a, b) => {
-    return Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx);
-  });
+  return pts.slice().sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
 }
 
-// CORRECCIÓN 1: Contornos con Canny Sensible y Epsilon dinámico
+// LA SOLUCIÓN INFALIBLE: Epsilon Dinámico y Fallback de Caja Delimitadora
 function detectDocQuad(srcCanvas, w, h){
   const DW = 480, sc = DW / w, dw = DW, dh = Math.round(h * sc);
   const small = document.createElement('canvas'); 
@@ -403,53 +398,79 @@ function detectDocQuad(srcCanvas, w, h){
   let src = cv.imread(small);
   let gray = new cv.Mat(), edges = new cv.Mat();
 
+  // 1. Limpieza y Canny Hipersensible
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  
-  // Desenfoque agresivo para ignorar la tinta interior de la factura
-  cv.GaussianBlur(gray, gray, new cv.Size(7, 7), 0);
-  // Sensibilidad alta (30,100) para agarrar el borde del papel aunque haya poca luz
-  cv.Canny(gray, edges, 30, 100);
+  cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+  cv.Canny(gray, edges, 20, 80);
 
-  let kernel = cv.Mat.ones(5, 5, cv.CV_8U);
-  cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
+  // Dilatación fuerte para fusionar bordes fragmentados
+  let kernel = cv.Mat.ones(3, 3, cv.CV_8U);
+  cv.dilate(edges, edges, kernel);
 
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
-  let bestQuad = null;
-  let maxArea = 0;
-
+  // 2. Extraer contornos válidos por área
+  let cnts = [];
   for (let i = 0; i < contours.size(); ++i) {
     let cnt = contours.get(i);
     let area = cv.contourArea(cnt);
-
-    // Evitar atrapar la imagen completa o elementos demasiado pequeños
-    if (area < (dw * dh * 0.15) || area > (dw * dh * 0.98)) {
+    // Ignora basura minúscula y el contorno gigante de la foto completa
+    if (area > (dw * dh * 0.10) && area < (dw * dh * 0.99)) {
+      cnts.push({ cnt: cnt, area: area });
+    } else {
       cnt.delete();
-      continue;
     }
-
-    let peri = cv.arcLength(cnt, true);
-    let approx = new cv.Mat();
-    
-    // El multiplicador 0.04 es más agresivo conectando líneas, tolerando papel arrugado o curvado
-    cv.approxPolyDP(cnt, approx, 0.04 * peri, true);
-
-    if (approx.rows === 4 && area > maxArea) {
-      maxArea = area;
-      bestQuad = [];
-      for (let j = 0; j < 4; j++) {
-        bestQuad.push({
-          x: approx.data32S[j * 2] / sc,
-          y: approx.data32S[j * 2 + 1] / sc
-        });
-      }
-    }
-    cnt.delete();
-    approx.delete();
   }
 
+  // Ordenar por área (el documento suele ser la mancha más grande)
+  cnts.sort((a, b) => b.area - a.area);
+
+  let bestQuad = null;
+
+  // 3. ESTRATEGIA A: Epsilon Dinámico
+  for (let i = 0; i < cnts.length; i++) {
+    let cnt = cnts[i].cnt;
+    let peri = cv.arcLength(cnt, true);
+    let approx = new cv.Mat();
+
+    // Incrementamos la rigidez (elasticidad) hasta obligar al algoritmo a hallar 4 vértices
+    for(let eps = 0.01; eps <= 0.20; eps += 0.01) {
+      cv.approxPolyDP(cnt, approx, eps * peri, true);
+      if (approx.rows === 4) {
+        bestQuad = [];
+        for (let j = 0; j < 4; j++) {
+          bestQuad.push({
+            x: approx.data32S[j * 2] / sc,
+            y: approx.data32S[j * 2 + 1] / sc
+          });
+        }
+        break; // Rompemos el ciclo de Epsilon
+      }
+    }
+    approx.delete();
+    if (bestQuad) break; // Rompemos el ciclo de contornos
+  }
+
+  // 4. ESTRATEGIA B: Fallback Infalible (Caja Delimitadora)
+  // Si la esquina del papel estaba rota o tapada y falló el polígono estricto, 
+  // trazamos una caja delimitadora general (garantizando que JAMÁS se pierda el escaneo).
+  if (!bestQuad && cnts.length > 0) {
+    let largestCnt = cnts[0].cnt;
+    let rect = cv.boundingRect(largestCnt); // Genera {x, y, w, h}
+    bestQuad = [
+      {x: rect.x / sc, y: rect.y / sc},
+      {x: (rect.x + rect.width) / sc, y: rect.y / sc},
+      {x: (rect.x + rect.width) / sc, y: (rect.y + rect.height) / sc},
+      {x: rect.x / sc, y: (rect.y + rect.height) / sc}
+    ];
+  }
+
+  // Limpieza de memoria
+  for (let i = 0; i < cnts.length; i++) {
+    cnts[i].cnt.delete();
+  }
   src.delete(); gray.delete(); edges.delete(); kernel.delete();
   contours.delete(); hierarchy.delete();
 
@@ -479,7 +500,6 @@ function warpCanvas(srcCanvas, quad){
   return cnv;
 }
 
-/* ---------- LA CORRECCIÓN MÁGICA: Espacio HSV para Colores Vivos ---------- */
 function applyFilter(srcCanvas, mode){
   if(mode === 'orig') {
     const c = document.createElement('canvas');
