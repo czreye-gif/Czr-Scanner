@@ -285,7 +285,7 @@
   </div>
   <div class="ce-actions">
     <button class="ce-cancel" id="eraserCancel">Cancelar</button>
-    <button class="ce-cancel" id="eraserClear" style="flex:0.6;">Limpiar trazos</button>
+    <button class="ce-cancel" id="eraserClear" style="flex:0.6;">Limpiar</button>
     <button class="ce-apply" id="eraserApply">Aplicar magia</button>
   </div>
 </div>
@@ -393,7 +393,6 @@ function orderQuad(pts){
   return [tl, tr, br, bl];
 }
 
-// Detección por Búsqueda de Contornos (findContours)
 function detectDocQuad(srcCanvas, w, h){
   const DW = 480, sc = DW / w, dw = DW, dh = Math.round(h * sc);
   const small = document.createElement('canvas'); 
@@ -473,7 +472,6 @@ function warpCanvas(srcCanvas, quad){
   return cnv;
 }
 
-// Filtros Profesionales con OpenCV nativo
 function applyFilter(srcCanvas, mode){
   if(mode === 'orig') {
     const c = document.createElement('canvas');
@@ -799,7 +797,7 @@ $('cornerApply').onclick=()=>{
   },20);
 };
 
-/* ---------- NUEVO: Herramienta de Borrador Mágico (Inpainting) ---------- */
+/* ---------- NUEVO: Herramienta de Borrador Mágico (Inpainting) CORREGIDO ---------- */
 let isErasing = false, lastEPos = null, eraserScale = 1;
 const fullResMaskCanvas = document.createElement('canvas');
 
@@ -807,14 +805,12 @@ $('btnEraser').onclick = () => {
   if(!pages.length) return;
   const pg = pages[pages.length-1];
   
-  // Usamos el documento ya enderezado (pg.warped) para facilitar el trazado
   if(!pg.warped) { pg.warped = warpCanvas(pg.raw, pg.quad); pg.warpDirty = false; }
   
   const cv2 = $('eraserCanvas');
   const maskCnv = $('eraserMask');
   const ctx = cv2.getContext('2d');
   
-  // Escalar para visualización en pantalla
   const maxW = 1100, scale = Math.min(1, maxW / pg.warped.width);
   cv2.width = Math.round(pg.warped.width * scale);
   cv2.height = Math.round(pg.warped.height * scale);
@@ -824,7 +820,6 @@ $('btnEraser').onclick = () => {
   ctx.drawImage(pg.warped, 0, 0, cv2.width, cv2.height);
   eraserScale = scale;
   
-  // Configurar el canvas oculto de resolución completa (donde ocurre la matemática)
   fullResMaskCanvas.width = pg.warped.width;
   fullResMaskCanvas.height = pg.warped.height;
   clearEraser();
@@ -835,7 +830,7 @@ $('btnEraser').onclick = () => {
 function clearEraser() {
   $('eraserMask').getContext('2d').clearRect(0, 0, $('eraserMask').width, $('eraserMask').height);
   const fctx = fullResMaskCanvas.getContext('2d');
-  fctx.fillStyle = '#000000'; // El algoritmo asume fondo negro y manchas blancas
+  fctx.fillStyle = '#000000'; 
   fctx.fillRect(0, 0, fullResMaskCanvas.width, fullResMaskCanvas.height);
 }
 
@@ -847,9 +842,8 @@ function getEraserPos(e) {
 }
 
 function drawEraser(p1, p2) {
-  const brushSizeUI = 24; // Tamaño del pincel en la pantalla
+  const brushSizeUI = 24; 
   
-  // Dibujar en pantalla (rojo semi-transparente)
   let ctx = $('eraserMask').getContext('2d');
   ctx.strokeStyle = 'rgba(231, 76, 60, 0.6)';
   ctx.lineWidth = brushSizeUI;
@@ -857,7 +851,6 @@ function drawEraser(p1, p2) {
   ctx.lineJoin = 'round';
   ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
   
-  // Dibujar en la matriz matemática real (blanco puro)
   let fctx = fullResMaskCanvas.getContext('2d');
   fctx.strokeStyle = '#ffffff';
   fctx.lineWidth = brushSizeUI / eraserScale;
@@ -894,31 +887,39 @@ $('eraserApply').onclick = () => {
   $('eraserModal').classList.add('hidden');
   
   setTimeout(() => {
-    const pg = pages[pages.length-1];
-    
-    // Leemos la imagen original y la máscara
-    let src = cv.imread(pg.warped);
-    let mask = cv.imread(fullResMaskCanvas);
-    cv.cvtColor(mask, mask, cv.COLOR_RGBA2GRAY);
-    
-    // El motor de OpenCV rellena la máscara usando los pixeles vecinos (Telea algorithm)
-    let dst = new cv.Mat();
-    cv.inpaint(src, mask, dst, 5, cv.INPAINT_TELEA);
-    
-    const outCnv = document.createElement('canvas');
-    cv.imshow(outCnv, dst);
-    pg.warped = outCnv; // Actualizamos la versión enderezada
-    
-    src.delete(); mask.delete(); dst.delete();
-    
-    // Re-renderizamos para que el filtro vuelva a aplanar el color encima de la corrección
-    renderPageFilter(pages.length-1);
-    preview.src = pg.dataUrl;
-    renderThumbs();
-    setStatus('Borrador aplicado. La magia se ha completado.');
+    try {
+      const pg = pages[pages.length-1];
+      
+      let src = cv.imread(pg.warped);
+      // ¡EL TRUCO! OpenCV inpaint colapsa si le das una imagen RGBA (4 canales). 
+      // Lo convertimos a RGB puro (3 canales) para que la matemática funcione.
+      cv.cvtColor(src, src, cv.COLOR_RGBA2RGB); 
+      
+      let mask = cv.imread(fullResMaskCanvas);
+      cv.cvtColor(mask, mask, cv.COLOR_RGBA2GRAY);
+      
+      // Endurecer la máscara para evitar bordes semitransparentes por el antialiasing
+      cv.threshold(mask, mask, 10, 255, cv.THRESH_BINARY);
+      
+      let dst = new cv.Mat();
+      // Aumentamos el radio a 9 píxeles para asegurar un borrado más suave
+      cv.inpaint(src, mask, dst, 9, cv.INPAINT_TELEA);
+      
+      const outCnv = document.createElement('canvas');
+      cv.imshow(outCnv, dst);
+      pg.warped = outCnv; 
+      
+      src.delete(); mask.delete(); dst.delete();
+      
+      renderPageFilter(pages.length-1);
+      preview.src = pg.dataUrl;
+      renderThumbs();
+      setStatus('Borrador aplicado. La magia se ha completado.');
+    } catch(err) {
+      setStatus('Error en borrador: ' + err.message, true);
+    }
   }, 50);
 };
-
 /* ---------- FIN Borrador Mágico ---------- */
 
 
