@@ -351,66 +351,8 @@ async function processSource(src, w, h){
     work.width=w; work.height=h;
     work.getContext('2d').drawImage(src,0,0,w,h);
 
-    let bestQuad=null;
-
-    // ---- detección robusta sobre versión reducida ----
-    {
-      const DW=500, sc=DW/w, dw=DW, dh=Math.round(h*sc);
-      const small=document.createElement('canvas'); small.width=dw; small.height=dh;
-      small.getContext('2d').drawImage(work,0,0,dw,dh);
-
-      let src=cv.imread(small), gray=new cv.Mat();
-      cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
-      cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
-
-      const candidates=[];
-      const collect=(mat)=>{
-        let contours=new cv.MatVector(), hier=new cv.Mat();
-        cv.findContours(mat,contours,hier,cv.RETR_LIST,cv.CHAIN_APPROX_SIMPLE);
-        const minA=dw*dh*0.10, maxA=dw*dh*0.97; // 97%: descarta el marco de la imagen misma
-        for(let i=0;i<contours.size();i++){
-          const c=contours.get(i);
-          const area=Math.abs(cv.contourArea(c));
-          if(area>minA && area<maxA){
-            // casco convexo + aproximación con tolerancia creciente hasta dar 4 puntos
-            let hull=new cv.Mat();
-            cv.convexHull(c,hull);
-            const peri=cv.arcLength(hull,true);
-            for(let eps=0.02; eps<=0.12; eps+=0.02){
-              const ap=new cv.Mat();
-              cv.approxPolyDP(hull,ap,eps*peri,true);
-              if(ap.rows===4){
-                const pts=[]; for(let k=0;k<4;k++) pts.push({x:ap.data32S[k*2],y:ap.data32S[k*2+1]});
-                candidates.push({area, pts});
-                ap.delete(); break;
-              }
-              ap.delete();
-            }
-            hull.delete();
-          }
-          c.delete();
-        }
-        contours.delete(); hier.delete();
-      };
-
-      // método A: bordes (Canny)
-      let edges=new cv.Mat();
-      cv.Canny(gray,edges,40,120);
-      cv.dilate(edges,edges,cv.Mat.ones(3,3,cv.CV_8U));
-      collect(edges); edges.delete();
-
-      // método B: umbral Otsu (papel claro sobre fondo más oscuro)
-      let bw=new cv.Mat();
-      cv.threshold(gray,bw,0,255,cv.THRESH_BINARY+cv.THRESH_OTSU);
-      collect(bw); bw.delete();
-
-      src.delete(); gray.delete();
-
-      if(candidates.length){
-        candidates.sort((a,b)=>b.area-a.area);
-        bestQuad=candidates[0].pts.map(p=>({x:p.x/sc, y:p.y/sc}));
-      }
-    }
+    // detección de documento por líneas + puntuación (técnica de escáner profesional)
+    const bestQuad = detectDocQuad(work, w, h);
 
     // si no detecta (ej. foto del modo escanear ya recortada), usa el marco completo
     const m=Math.round(Math.min(w,h)*0.01);
@@ -435,6 +377,124 @@ function orderQuad(pts){
   const top=s.slice(0,2).sort((a,b)=>a.x-b.x);
   const bot=s.slice(2,4).sort((a,b)=>a.x-b.x);
   return [top[0], top[1], bot[1], bot[0]]; // TL,TR,BR,BL
+}
+
+/* ===== detección de documento estilo escáner profesional =====
+   1) Detectar bordes (Canny)
+   2) Extraer líneas rectas (Hough) y separarlas en ~horizontales y ~verticales
+   3) Combinar pares de líneas en cuadriláteros candidatos
+   4) Puntuar cada candidato: cuánto de su perímetro cae sobre bordes REALES
+      + geometría sana (ángulos ~90°, área razonable). El mejor gana.
+   Los bordes del cuadro participan como líneas auxiliares para documentos
+   que salen cortados en la foto. */
+function detectDocQuad(srcCanvas, w, h){
+  const DW=480, sc=DW/w, dw=DW, dh=Math.round(h*sc);
+  const small=document.createElement('canvas'); small.width=dw; small.height=dh;
+  small.getContext('2d').drawImage(srcCanvas,0,0,dw,dh);
+
+  let src=cv.imread(small), gray=new cv.Mat(), edges=new cv.Mat();
+  cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
+  cv.Canny(gray,edges,50,150);
+
+  // mapa de apoyo: bordes dilatados (tolerancia ±2px al muestrear)
+  let support=new cv.Mat();
+  cv.dilate(edges,support,cv.Mat.ones(5,5,cv.CV_8U));
+  const sup=support.data;
+
+  // --- líneas rectas ---
+  let linesMat=new cv.Mat();
+  cv.HoughLinesP(edges,linesMat,1,Math.PI/180,40,Math.min(dw,dh)*0.30,Math.min(dw,dh)*0.06);
+  const horiz=[], vert=[];
+  for(let i=0;i<linesMat.rows;i++){
+    const x1=linesMat.data32S[i*4],y1=linesMat.data32S[i*4+1],
+          x2=linesMat.data32S[i*4+2],y2=linesMat.data32S[i*4+3];
+    const len=Math.hypot(x2-x1,y2-y1);
+    let ang=Math.atan2(y2-y1,x2-x1)*180/Math.PI;
+    ang=((ang%180)+180)%180;
+    const L={x1,y1,x2,y2,len,frame:false};
+    if(ang<35||ang>145) horiz.push(L);
+    else if(ang>55&&ang<125) vert.push(L);
+  }
+  linesMat.delete();
+
+  // deduplicar líneas casi iguales, quedarnos con las más largas
+  function dedupe(arr,keyFn,tol){
+    arr.sort((a,b)=>b.len-a.len);
+    const out=[];
+    for(const L of arr){
+      const k=keyFn(L);
+      if(!out.some(o=>Math.abs(keyFn(o)-k)<tol)) out.push(L);
+      if(out.length>=7) break;
+    }
+    return out;
+  }
+  const hLines=dedupe(horiz,L=>(L.y1+L.y2)/2,dh*0.04);
+  const vLines=dedupe(vert, L=>(L.x1+L.x2)/2,dw*0.04);
+
+  // bordes del cuadro: auxiliares para documentos cortados por la foto
+  hLines.push({x1:0,y1:1,x2:dw,y2:1,len:dw,frame:true});
+  hLines.push({x1:0,y1:dh-2,x2:dw,y2:dh-2,len:dw,frame:true});
+  vLines.push({x1:1,y1:0,x2:1,y2:dh,len:dh,frame:true});
+  vLines.push({x1:dw-2,y1:0,x2:dw-2,y2:dh,len:dh,frame:true});
+
+  function inter(a,b){
+    const d1x=a.x2-a.x1,d1y=a.y2-a.y1,d2x=b.x2-b.x1,d2y=b.y2-b.y1;
+    const den=d1x*d2y-d1y*d2x;
+    if(Math.abs(den)<1e-9) return null;
+    const t=((b.x1-a.x1)*d2y-(b.y1-a.y1)*d2x)/den;
+    return {x:a.x1+t*d1x, y:a.y1+t*d1y};
+  }
+  const inFrame=p=>p && p.x>-dw*0.06 && p.x<dw*1.06 && p.y>-dh*0.06 && p.y<dh*1.06;
+
+  // apoyo de un lado: fracción del lado que cae sobre borde real
+  function sideSupport(p,q,isFrame){
+    if(isFrame) return 0.55; // los lados del cuadro no exigen evidencia
+    const N=24; let hit=0;
+    for(let i=0;i<=N;i++){
+      const x=Math.round(p.x+(q.x-p.x)*i/N), y=Math.round(p.y+(q.y-p.y)*i/N);
+      if(x>=0&&x<dw&&y>=0&&y<dh&&sup[y*dw+x]>0) hit++;
+    }
+    return hit/(N+1);
+  }
+  function angleAt(a,b,c){
+    const v1x=a.x-b.x,v1y=a.y-b.y,v2x=c.x-b.x,v2y=c.y-b.y;
+    const d=(v1x*v2x+v1y*v2y)/(Math.hypot(v1x,v1y)*Math.hypot(v2x,v2y)+1e-9);
+    return Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI;
+  }
+
+  let best=null, bestScore=0;
+  for(let i=0;i<hLines.length;i++) for(let j=i+1;j<hLines.length;j++){
+    for(let k=0;k<vLines.length;k++) for(let l=k+1;l<vLines.length;l++){
+      const h1=hLines[i],h2=hLines[j],v1=vLines[k],v2=vLines[l];
+      if(h1.frame&&h2.frame&&v1.frame&&v2.frame) continue;
+      const A=inter(h1,v1),B=inter(h1,v2),C=inter(h2,v2),D=inter(h2,v1);
+      if(!(inFrame(A)&&inFrame(B)&&inFrame(C)&&inFrame(D))) continue;
+      const pts=[A,B,C,D];
+      let area=0;
+      for(let t=0;t<4;t++){const p=pts[t],q=pts[(t+1)%4]; area+=p.x*q.y-q.x*p.y;}
+      area=Math.abs(area)/2;
+      if(area<dw*dh*0.15 || area>dw*dh*0.985) continue;
+      let okAng=true;
+      for(let t=0;t<4;t++){
+        const a=angleAt(pts[(t+3)%4],pts[t],pts[(t+1)%4]);
+        if(a<55||a>125){okAng=false;break;}
+      }
+      if(!okAng) continue;
+      const s=sideSupport(A,B,h1.frame)+sideSupport(B,C,v2.frame)
+             +sideSupport(C,D,h2.frame)+sideSupport(D,A,v1.frame);
+      const score=s+(area/(dw*dh))*1.2; // el apoyo manda; el área desempata hacia afuera
+      if(score>bestScore){ bestScore=score; best=pts; }
+    }
+  }
+
+  src.delete(); gray.delete(); edges.delete(); support.delete();
+
+  // exigir evidencia real mínima: si no, mejor no recortar que recortar mal
+  if(best && bestScore>2.2){
+    return best.map(p=>({x:p.x/sc, y:p.y/sc}));
+  }
+  return null;
 }
 
 // endereza un canvas crudo usando 4 esquinas (TL,TR,BR,BL) -> nuevo canvas
