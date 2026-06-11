@@ -230,7 +230,7 @@
     </div>
     <div class="filters">
       <button class="f-btn" id="f-orig">Original</button>
-      <button class="f-btn f-active" id="f-magic">Color</button>
+      <button class="f-btn f-active" id="f-magic">Mejorado</button>
       <button class="f-btn" id="f-gris">Gris</button>
       <button class="f-btn" id="f-byn">B/N</button>
     </div>
@@ -381,19 +381,18 @@ function work2canvas(srcCanvas){
   return c;
 }
 
-// CORRECCIÓN 2: Ordenamiento avanzado por trigonometría (adiós a los moños cruzados)
 function orderQuad(pts){
-  // Encontrar el centro de gravedad del papel
-  const cx = pts.reduce((sum, p) => sum + p.x, 0) / 4;
-  const cy = pts.reduce((sum, p) => sum + p.y, 0) / 4;
+  const sum = pts.map(p => p.x + p.y);
+  const diff = pts.map(p => p.x - p.y);
 
-  // Ordenar radialmente usando arcotangente (inmune a rotaciones extremas)
-  return pts.slice().sort((a, b) => {
-    return Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx);
-  });
+  const tl = pts[sum.indexOf(Math.min(...sum))];
+  const br = pts[sum.indexOf(Math.max(...sum))];
+  const tr = pts[diff.indexOf(Math.max(...diff))];
+  const bl = pts[diff.indexOf(Math.min(...diff))];
+
+  return [tl, tr, br, bl];
 }
 
-// CORRECCIÓN 1: Contornos con Canny Sensible y Epsilon dinámico
 function detectDocQuad(srcCanvas, w, h){
   const DW = 480, sc = DW / w, dw = DW, dh = Math.round(h * sc);
   const small = document.createElement('canvas'); 
@@ -404,11 +403,8 @@ function detectDocQuad(srcCanvas, w, h){
   let gray = new cv.Mat(), edges = new cv.Mat();
 
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-  
-  // Desenfoque agresivo para ignorar la tinta interior de la factura
-  cv.GaussianBlur(gray, gray, new cv.Size(7, 7), 0);
-  // Sensibilidad alta (30,100) para agarrar el borde del papel aunque haya poca luz
-  cv.Canny(gray, edges, 30, 100);
+  cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+  cv.Canny(gray, edges, 75, 200);
 
   let kernel = cv.Mat.ones(5, 5, cv.CV_8U);
   cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
@@ -424,17 +420,14 @@ function detectDocQuad(srcCanvas, w, h){
     let cnt = contours.get(i);
     let area = cv.contourArea(cnt);
 
-    // Evitar atrapar la imagen completa o elementos demasiado pequeños
-    if (area < (dw * dh * 0.15) || area > (dw * dh * 0.98)) {
+    if (area < (dw * dh * 0.15)) {
       cnt.delete();
       continue;
     }
 
     let peri = cv.arcLength(cnt, true);
     let approx = new cv.Mat();
-    
-    // El multiplicador 0.04 es más agresivo conectando líneas, tolerando papel arrugado o curvado
-    cv.approxPolyDP(cnt, approx, 0.04 * peri, true);
+    cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
 
     if (approx.rows === 4 && area > maxArea) {
       maxArea = area;
@@ -479,7 +472,6 @@ function warpCanvas(srcCanvas, quad){
   return cnv;
 }
 
-/* ---------- LA CORRECCIÓN MÁGICA: Espacio HSV para Colores Vivos ---------- */
 function applyFilter(srcCanvas, mode){
   if(mode === 'orig') {
     const c = document.createElement('canvas');
@@ -511,33 +503,9 @@ function applyFilter(srcCanvas, mode){
 
     const divided = new cv.Mat();
     cv.divide(src, bgFull, divided, 255);
+    divided.convertTo(dst, -1, 1.15, -15);
     
-    if(mode === 'magic') {
-      const hsv = new cv.Mat();
-      cv.cvtColor(divided, hsv, cv.COLOR_RGB2HSV);
-      
-      const planes = new cv.MatVector();
-      cv.split(hsv, planes);
-
-      const h = planes.get(0);
-      const s = planes.get(1);
-      const v = planes.get(2);
-
-      s.convertTo(s, -1, 1.6, 0);
-      v.convertTo(v, -1, 1.05, -5);
-
-      const merged = new cv.MatVector();
-      merged.push_back(h);
-      merged.push_back(s);
-      merged.push_back(v);
-
-      cv.merge(merged, hsv);
-      cv.cvtColor(hsv, dst, cv.COLOR_HSV2RGB);
-
-      hsv.delete(); planes.delete(); merged.delete();
-      h.delete(); s.delete(); v.delete();
-    } else {
-      divided.convertTo(dst, -1, 1.15, -15);
+    if(mode === 'gris'){
       cv.cvtColor(dst, dst, cv.COLOR_RGB2GRAY);
       cv.cvtColor(dst, dst, cv.COLOR_GRAY2RGB);
     }
@@ -829,7 +797,7 @@ $('cornerApply').onclick=()=>{
   },20);
 };
 
-/* ---------- Herramienta de Borrador Mágico ---------- */
+/* ---------- NUEVO: Herramienta de Borrador Mágico (Inpainting) CORREGIDO ---------- */
 let isErasing = false, lastEPos = null, eraserScale = 1;
 const fullResMaskCanvas = document.createElement('canvas');
 
@@ -923,13 +891,18 @@ $('eraserApply').onclick = () => {
       const pg = pages[pages.length-1];
       
       let src = cv.imread(pg.warped);
+      // ¡EL TRUCO! OpenCV inpaint colapsa si le das una imagen RGBA (4 canales). 
+      // Lo convertimos a RGB puro (3 canales) para que la matemática funcione.
       cv.cvtColor(src, src, cv.COLOR_RGBA2RGB); 
       
       let mask = cv.imread(fullResMaskCanvas);
       cv.cvtColor(mask, mask, cv.COLOR_RGBA2GRAY);
+      
+      // Endurecer la máscara para evitar bordes semitransparentes por el antialiasing
       cv.threshold(mask, mask, 10, 255, cv.THRESH_BINARY);
       
       let dst = new cv.Mat();
+      // Aumentamos el radio a 9 píxeles para asegurar un borrado más suave
       cv.inpaint(src, mask, dst, 9, cv.INPAINT_TELEA);
       
       const outCnv = document.createElement('canvas');
@@ -947,6 +920,8 @@ $('eraserApply').onclick = () => {
     }
   }, 50);
 };
+/* ---------- FIN Borrador Mágico ---------- */
+
 
 $('btnClear').onclick=()=>{ pages.length=0; renderThumbs(); showCam(); setStatus('Vaciado.'); };
 
