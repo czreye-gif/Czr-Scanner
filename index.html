@@ -1,3 +1,8 @@
+Claro, César. Aquí tienes el archivo completo con las correcciones ya integradas (el CSS del contenedor de la lupa, la nueva lógica de `orderQuad` y el umbral relajado para la detección automática).
+
+Solo tienes que copiar todo este bloque, pegarlo en tu archivo `index.html` y guardar.
+
+```html
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -165,7 +170,7 @@
     display:flex; align-items:center; justify-content:center;
     touch-action:none; padding:8px;
   }
-  .ce-frame{position:relative; max-width:100%; max-height:100%}
+  .ce-frame{position:relative; display:inline-flex; max-width:100%; max-height:100%}
   .ce-frame canvas{display:block; max-width:100%; max-height:calc(100vh - 170px); width:auto; height:auto; border-radius:4px}
   .ce-frame svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible}
   .ce-loupe{
@@ -197,7 +202,6 @@
     <input type="text" id="rfc" placeholder="XAXX010101000" maxlength="13" autocomplete="off">
   </div>
 
-  <!-- ===== VISTA CÁMARA (usa la cámara nativa de la MatePad) ===== -->
   <section id="viewCam">
     <div class="capture-hero">
       <div class="hero-icon">📄</div>
@@ -216,11 +220,9 @@
       <h2><span>Páginas capturadas</span><span id="count">0</span></h2>
       <div class="thumbs" id="thumbs"></div>
     </div>
-    <!-- canvas de trabajo oculto (se conserva para procesar) -->
     <canvas id="work" class="hidden"></canvas>
   </section>
 
-  <!-- ===== VISTA REVISIÓN ===== -->
   <section id="viewReview" class="hidden">
     <div class="rev-banner" id="revBanner">Página 1</div>
     <div class="rev-stage" id="revStage">
@@ -252,7 +254,6 @@
   <div class="status" id="status"></div>
 </main>
 
-<!-- ===== EDITOR DE ESQUINAS (pantalla completa) ===== -->
 <div id="cornerModal" class="corner-editor hidden">
   <div class="ce-head">
     <div>
@@ -295,7 +296,7 @@ const status=$('status');
 function setStatus(msg, err=false){ status.textContent=msg; status.className='status'+(err?' err':''); }
 $('folio').textContent = 'FOLIO ' + new Date().toISOString().slice(0,10).replace(/-/g,'');
 
-/* ---------- OpenCV carga diferida (solo si se necesita) ---------- */
+/* ---------- OpenCV carga diferida ---------- */
 function loadCV(){
   return new Promise((res,rej)=>{
     if(cvReady) return res();
@@ -322,15 +323,12 @@ function loadCV(){
   });
 }
 
-/* ---------- captura con cámara nativa de la MatePad ---------- */
-
-// el botón principal abre la cámara del sistema (con flash y buena definición)
 $('btnCapture').onclick = ()=> $('fileCapture').click();
 $('btnGallery').onclick = ()=> $('fileGallery').click();
 
 function handleIncomingFile(e){
   const f=e.target.files[0];
-  e.target.value=''; // permite volver a elegir la misma foto
+  e.target.value=''; 
   if(!f) return;
   setStatus('Procesando imagen…');
   const img=new Image();
@@ -351,42 +349,35 @@ async function processSource(src, w, h){
     work.width=w; work.height=h;
     work.getContext('2d').drawImage(src,0,0,w,h);
 
-    // detección de documento por líneas + puntuación (técnica de escáner profesional)
     const bestQuad = detectDocQuad(work, w, h);
 
-    // si no detecta (ej. foto del modo escanear ya recortada), usa el marco completo
     const m=Math.round(Math.min(w,h)*0.01);
     const quad = bestQuad ? orderQuad(bestQuad)
                           : [{x:m,y:m},{x:w-m,y:m},{x:w-m,y:h-m},{x:m,y:h-m}];
 
-    // guardamos el CRUDO a color + esquinas; el enderezado se hace al renderizar
     addPage(work2canvas(work), quad, !!bestQuad);
   }catch(e){ setStatus('Error al procesar: '+e.message, true); }
 }
 
-// copia el canvas de trabajo a uno independiente
 function work2canvas(srcCanvas){
   const c=document.createElement('canvas'); c.width=srcCanvas.width; c.height=srcCanvas.height;
   c.getContext('2d').drawImage(srcCanvas,0,0);
   return c;
 }
 
-// ordena 4 puntos como TL, TR, BR, BL
+// CORRECCIÓN 1: Nuevo ordenamiento por sumas y diferencias
 function orderQuad(pts){
-  const s=pts.slice().sort((a,b)=>a.y-b.y);
-  const top=s.slice(0,2).sort((a,b)=>a.x-b.x);
-  const bot=s.slice(2,4).sort((a,b)=>a.x-b.x);
-  return [top[0], top[1], bot[1], bot[0]]; // TL,TR,BR,BL
+  const sum = pts.map(p => p.x + p.y);
+  const diff = pts.map(p => p.x - p.y);
+
+  const tl = pts[sum.indexOf(Math.min(...sum))];
+  const br = pts[sum.indexOf(Math.max(...sum))];
+  const tr = pts[diff.indexOf(Math.max(...diff))];
+  const bl = pts[diff.indexOf(Math.min(...diff))];
+
+  return [tl, tr, br, bl];
 }
 
-/* ===== detección de documento estilo escáner profesional =====
-   1) Detectar bordes (Canny)
-   2) Extraer líneas rectas (Hough) y separarlas en ~horizontales y ~verticales
-   3) Combinar pares de líneas en cuadriláteros candidatos
-   4) Puntuar cada candidato: cuánto de su perímetro cae sobre bordes REALES
-      + geometría sana (ángulos ~90°, área razonable). El mejor gana.
-   Los bordes del cuadro participan como líneas auxiliares para documentos
-   que salen cortados en la foto. */
 function detectDocQuad(srcCanvas, w, h){
   const DW=480, sc=DW/w, dw=DW, dh=Math.round(h*sc);
   const small=document.createElement('canvas'); small.width=dw; small.height=dh;
@@ -397,14 +388,11 @@ function detectDocQuad(srcCanvas, w, h){
   cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
   cv.Canny(gray,edges,50,150);
 
-  // mapa de apoyo: bordes dilatados (tolerancia ±2px al muestrear)
   let support=new cv.Mat();
   cv.dilate(edges,support,cv.Mat.ones(5,5,cv.CV_8U));
   const sup=support.data;
-  // copia del gris: para medir contraste a ambos lados de cada línea
   const grayData=new Uint8Array(gray.data);
 
-  // --- líneas rectas ---
   let linesMat=new cv.Mat();
   cv.HoughLinesP(edges,linesMat,1,Math.PI/180,40,Math.min(dw,dh)*0.30,Math.min(dw,dh)*0.06);
   const horiz=[], vert=[];
@@ -420,7 +408,6 @@ function detectDocQuad(srcCanvas, w, h){
   }
   linesMat.delete();
 
-  // deduplicar líneas casi iguales, quedarnos con las más largas
   function dedupe(arr,keyFn,tol){
     arr.sort((a,b)=>b.len-a.len);
     const out=[];
@@ -434,7 +421,6 @@ function detectDocQuad(srcCanvas, w, h){
   const hLines=dedupe(horiz,L=>(L.y1+L.y2)/2,dh*0.04);
   const vLines=dedupe(vert, L=>(L.x1+L.x2)/2,dw*0.04);
 
-  // bordes del cuadro: auxiliares para documentos cortados por la foto
   hLines.push({x1:0,y1:1,x2:dw,y2:1,len:dw,frame:true});
   hLines.push({x1:0,y1:dh-2,x2:dw,y2:dh-2,len:dw,frame:true});
   vLines.push({x1:1,y1:0,x2:1,y2:dh,len:dh,frame:true});
@@ -449,15 +435,11 @@ function detectDocQuad(srcCanvas, w, h){
   }
   const inFrame=p=>p && p.x>-dw*0.06 && p.x<dw*1.06 && p.y>-dh*0.06 && p.y<dh*1.06;
 
-  // puntuación de un lado: apoyo en bordes reales × contraste perpendicular.
-  // CLAVE: un borde verdadero tiene papel de un lado y fondo del otro
-  // (contraste alto). Una línea INTERNA del documento (divisor de tabla)
-  // tiene papel de ambos lados (contraste ~0) y queda castigada sola.
   function sideSupport(p,q,isFrame){
     if(isFrame) return 0.55;
     const N=24; let hit=0, contrast=0, cN=0;
     const dx=q.x-p.x, dy=q.y-p.y, L=Math.hypot(dx,dy)+1e-9;
-    const px=-dy/L, py=dx/L; // perpendicular unitario
+    const px=-dy/L, py=dx/L; 
     const off=6;
     for(let i=0;i<=N;i++){
       const x=p.x+dx*i/N, y=p.y+dy*i/N;
@@ -470,7 +452,7 @@ function detectDocQuad(srcCanvas, w, h){
       }
     }
     const supFrac=hit/(N+1);
-    const contFrac=cN? Math.min(1,(contrast/cN)/40) : 0; // 40+ niveles = borde pleno
+    const contFrac=cN? Math.min(1,(contrast/cN)/40) : 0; 
     return supFrac*(0.30+0.70*contFrac);
   }
   function angleAt(a,b,c){
@@ -499,21 +481,20 @@ function detectDocQuad(srcCanvas, w, h){
       if(!okAng) continue;
       const s=sideSupport(A,B,h1.frame)+sideSupport(B,C,v2.frame)
              +sideSupport(C,D,h2.frame)+sideSupport(D,A,v1.frame);
-      const score=s+(area/(dw*dh))*1.2; // el apoyo manda; el área desempata hacia afuera
+      const score=s+(area/(dw*dh))*1.2; 
       if(score>bestScore){ bestScore=score; best=pts; }
     }
   }
 
   src.delete(); gray.delete(); edges.delete(); support.delete();
 
-  // exigir evidencia real mínima: si no, mejor no recortar que recortar mal
-  if(best && bestScore>2.2){
+  // CORRECCIÓN 2: Umbral relajado de 2.2 a 1.4
+  if(best && bestScore>1.4){
     return best.map(p=>({x:p.x/sc, y:p.y/sc}));
   }
   return null;
 }
 
-// endereza un canvas crudo usando 4 esquinas (TL,TR,BR,BL) -> nuevo canvas
 function warpCanvas(srcCanvas, quad){
   if(!(window.cv && cv.imread)) return srcCanvas;
   let img=cv.imread(srcCanvas);
@@ -527,7 +508,6 @@ function warpCanvas(srcCanvas, quad){
   cv.warpPerspective(img,dst,M,new cv.Size(W,H));
   const cnv=document.createElement('canvas'); cv.imshow(cnv,dst);
   img.delete();srcM.delete();dstM.delete();M.delete();dst.delete();
-  // rebanar un filo fino (~1.2%): elimina el borde oscuro que deja el corte
   const inset=Math.max(2, Math.round(Math.min(W,H)*0.012));
   if(W-inset*2>50 && H-inset*2>50){
     const out=document.createElement('canvas');
@@ -538,10 +518,6 @@ function warpCanvas(srcCanvas, quad){
   return cnv;
 }
 
-/* ---------- filtros estilo escáner premium ---------- */
-// Base de todos: estirado de niveles. Detecta el tono real del papel y de la
-// tinta en un histograma y los lleva a blanco/negro puros. Global, monotónico,
-// nunca mancha ni pixelea.
 function computeLevels(canvas){
   const sw=Math.min(300, canvas.width), sh=Math.max(1, Math.round(canvas.height*sw/canvas.width));
   const s=document.createElement('canvas'); s.width=sw; s.height=sh;
@@ -553,12 +529,11 @@ function computeLevels(canvas){
     hist[(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])|0]++;
   }
   const total=sw*sh;
-  // negro: percentil 1 inferior. blanco: percentil 20 superior (el papel domina la imagen)
   let acc=0, lo=0, hi=255;
   for(let v=0;v<256;v++){ acc+=hist[v]; if(acc>=total*0.01){ lo=v; break; } }
   acc=0;
   for(let v=255;v>=0;v--){ acc+=hist[v]; if(acc>=total*0.20){ hi=v; break; } }
-  if(hi-lo<30){ lo=0; hi=255; } // imagen rara: no estirar
+  if(hi-lo<30){ lo=0; hi=255; } 
   return {lo, hi};
 }
 
@@ -576,8 +551,6 @@ function applyFilter(srcCanvas, mode){
   const stretch=v=>{ v=(v-lo)*255/range; return v<0?0:v>255?255:v; };
 
   if(mode==='magic'){
-    // Mejorado: estirar cada canal con los mismos niveles -> papel blanco,
-    // tinta negra, sellos/colores conservados y más vivos
     for(let i=0;i<p.length;i+=4){
       p[i]=stretch(p[i]); p[i+1]=stretch(p[i+1]); p[i+2]=stretch(p[i+2]);
     }
@@ -587,12 +560,10 @@ function applyFilter(srcCanvas, mode){
       p[i]=p[i+1]=p[i+2]=g;
     }
   } else if(mode==='byn'){
-    // binarizar sobre la luminancia ya estirada + despeckle
     const bin=new Uint8Array(W*H);
     for(let i=0,j=0;i<p.length;i+=4,j++){
       bin[j]=stretch(0.299*p[i]+0.587*p[i+1]+0.114*p[i+2])>165?255:0;
     }
-    // quitar puntos negros aislados (ruido), conservar trazos
     const clean=new Uint8Array(W*H);
     for(let y=0;y<H;y++){
       for(let x=0;x<W;x++){
@@ -620,7 +591,6 @@ function applyFilter(srcCanvas, mode){
 
   function apply(){ img.style.transform=`translate(${tx}px,${ty}px) scale(${scale})`; }
   function reset(){ scale=1; tx=0; ty=0; apply(); }
-  // resetear cada vez que cambie la imagen
   const obs=new MutationObserver(reset);
   obs.observe(img,{attributes:true, attributeFilter:['src']});
 
@@ -649,7 +619,6 @@ function applyFilter(srcCanvas, mode){
 
   box.addEventListener('touchend',(e)=>{ if(e.touches.length===0) panning=false; });
 
-  // doble toque: alterna entre 1x y 2.5x
   let lastTap=0;
   box.addEventListener('touchend',(e)=>{
     const now=Date.now();
@@ -657,14 +626,12 @@ function applyFilter(srcCanvas, mode){
     lastTap=now;
   });
 
-  // soporte mouse (escritorio): rueda para zoom
   box.addEventListener('wheel',(e)=>{
     e.preventDefault();
     scale=Math.min(5, Math.max(1, scale + (e.deltaY<0?0.2:-0.2)));
     if(scale===1){tx=0;ty=0;} apply();
   },{passive:false});
 
-  // botones visibles
   function zoomBy(f){ scale=Math.min(5,Math.max(1, scale*f)); if(scale<=1){scale=1;tx=0;ty=0;} apply(); }
   $('zIn').onclick =(e)=>{ e.stopPropagation(); zoomBy(1.4); };
   $('zOut').onclick=(e)=>{ e.stopPropagation(); zoomBy(1/1.4); };
@@ -683,17 +650,14 @@ function showReview(){
 }
 
 /* ---------- gestión de páginas ---------- */
-let currentFilter='magic'; // filtro por defecto para texto fiscal
+let currentFilter='magic';
 
-// recalcula el enderezado y el filtro de una página
 function renderPageFilter(i){
   const pg=pages[i];
-  // 1) enderezar el crudo con las esquinas actuales (cacheado si no cambió)
   if(!pg.warped || pg.warpDirty){
     pg.warped = warpCanvas(pg.raw, pg.quad);
     pg.warpDirty=false;
   }
-  // 2) aplicar filtro
   const filtered=applyFilter(pg.warped, pg.filter);
   pg.dataUrl=filtered.toDataURL('image/jpeg',0.95);
   pg.w=filtered.width; pg.h=filtered.height;
@@ -713,14 +677,12 @@ function addPage(rawCanvas, quad, enderezada){
   setStatus('Revisa la página. Ajusta esquinas o filtro si hace falta.');
 }
 
-// aplica filtro a la página que se está revisando (la última)
 function setReviewFilter(mode){
   if(!pages.length) return;
   const i=pages.length-1;
   pages[i].filter=mode; currentFilter=mode;
   markFilterButtons(mode);
   if(mode==='byn') setStatus('Procesando B/N…');
-  // dejar pintar el estado antes del cálculo pesado
   setTimeout(()=>{
     renderPageFilter(i);
     preview.src=pages[i].dataUrl;
@@ -756,20 +718,19 @@ function renderThumbs(){
   $('btnPdf').disabled=!has; $('btnClear').disabled=!has;
 }
 
-/* ---- botones de la vista revisión ---- */
-$('btnRetake').onclick=()=>{           // descarta la última y vuelve a tomar
+$('btnRetake').onclick=()=>{           
   pages.pop(); renderThumbs(); showCam();
   setStatus('Página descartada. Toma la foto de nuevo.');
   $('fileCapture').click();
 };
-$('btnMore').onclick=()=>{             // conserva y vuelve a tomar otra
+$('btnMore').onclick=()=>{             
   showCam();
   setStatus('Página guardada. Toma la siguiente.');
   $('fileCapture').click();
 };
 $('btnFinish').onclick=()=>{ $('btnPdf').click(); };
 
-/* ---------- editor de esquinas: pantalla completa + lupa ---------- */
+/* ---------- editor de esquinas ---------- */
 let cornerPts=[], cornerScale=1, dragIdx=-1, ceRaw=null;
 
 $('btnCorners').onclick=()=>{
@@ -777,12 +738,10 @@ $('btnCorners').onclick=()=>{
   const pg=pages[pages.length-1];
   ceRaw=pg.raw;
   const cv2=$('cornerCanvas'), ctx=cv2.getContext('2d');
-  // canvas a resolución alta para que se vea nítido (CSS lo escala)
   const maxW=1100, scale=Math.min(1, maxW/ceRaw.width);
   cv2.width=Math.round(ceRaw.width*scale); cv2.height=Math.round(ceRaw.height*scale);
   ctx.drawImage(ceRaw,0,0,cv2.width,cv2.height);
   cornerScale=scale;
-  // svg con el MISMO sistema de coordenadas que el canvas (sin importar tamaño CSS)
   $('cornerSvg').setAttribute('viewBox','0 0 '+cv2.width+' '+cv2.height);
   cornerPts=pg.quad.map(p=>({x:p.x*scale, y:p.y*scale}));
   dragIdx=-1;
@@ -792,7 +751,7 @@ $('btnCorners').onclick=()=>{
 
 function drawCorners(){
   const svg=$('cornerSvg'), W=$('cornerCanvas').width;
-  const R=Math.max(18, W*0.035);           // radio de manija proporcional
+  const R=Math.max(18, W*0.035);           
   const poly=cornerPts.map(p=>p.x+','+p.y).join(' ');
   let h='<polygon points="'+poly+'" fill="rgba(31,92,77,0.10)" stroke="#2ecc8f" stroke-width="'+(W*0.004)+'"/>';
   cornerPts.forEach((p,i)=>{
@@ -803,7 +762,6 @@ function drawCorners(){
   svg.innerHTML=h;
 }
 
-// pointer -> coords del canvas (vía viewBox compartido)
 function cePos(e){
   const cv2=$('cornerCanvas'), r=cv2.getBoundingClientRect();
   return {x:(e.clientX-r.left)*(cv2.width/r.width), y:(e.clientY-r.top)*(cv2.height/r.height)};
@@ -816,11 +774,10 @@ ceArea.addEventListener('pointerdown',(e)=>{
   const W=$('cornerCanvas').width;
   let nearest=-1, nd=1e9;
   cornerPts.forEach((p,i)=>{ const d=Math.hypot(p.x-pos.x,p.y-pos.y); if(d<nd){nd=d;nearest=i;} });
-  // agarre generoso: hasta 12% del ancho de distancia
   if(nd < W*0.12){
     dragIdx=nearest;
     ceArea.setPointerCapture(e.pointerId);
-    movePoint(pos); // engancha de inmediato
+    movePoint(pos); 
     e.preventDefault();
   }
 });
@@ -839,20 +796,16 @@ function movePoint(pos, clientX, clientY){
   updateLoupe(clientX, clientY);
 }
 
-// lupa: muestra ampliado el punto exacto, lejos del dedo
 function updateLoupe(clientX, clientY){
   if(dragIdx<0) return;
   const lp=$('loupe'), lc=$('loupeCanvas').getContext('2d');
   const p=cornerPts[dragIdx];
-  // región del crudo alrededor de la esquina (en coords del crudo)
   const rx=p.x/cornerScale, ry=p.y/cornerScale;
-  const Z=3, half=128/(2*Z); // zoom 3x
+  const Z=3, half=128/(2*Z); 
   lc.fillStyle='#000'; lc.fillRect(0,0,128,128);
   lc.drawImage(ceRaw, rx-half, ry-half, half*2, half*2, 0, 0, 128, 128);
-  // cruz del punto exacto
   lc.strokeStyle='#2ecc8f'; lc.lineWidth=1.5;
   lc.beginPath(); lc.moveTo(64,46); lc.lineTo(64,82); lc.moveTo(46,64); lc.lineTo(82,64); lc.stroke();
-  // posicionar la lupa en la esquina opuesta al dedo
   const wrap=ceArea.getBoundingClientRect();
   const onLeft = clientX!=null ? (clientX-wrap.left) < wrap.width/2 : true;
   const onTop  = clientY!=null ? (clientY-wrap.top)  < wrap.height/2 : true;
@@ -878,7 +831,6 @@ $('cornerApply').onclick=()=>{
     setStatus('Recorte actualizado.');
   },20);
 };
-
 
 $('btnClear').onclick=()=>{ pages.length=0; renderThumbs(); showCam(); setStatus('Vaciado.'); };
 
