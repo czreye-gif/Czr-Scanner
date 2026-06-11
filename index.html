@@ -401,6 +401,8 @@ function detectDocQuad(srcCanvas, w, h){
   let support=new cv.Mat();
   cv.dilate(edges,support,cv.Mat.ones(5,5,cv.CV_8U));
   const sup=support.data;
+  // copia del gris: para medir contraste a ambos lados de cada línea
+  const grayData=new Uint8Array(gray.data);
 
   // --- líneas rectas ---
   let linesMat=new cv.Mat();
@@ -447,15 +449,29 @@ function detectDocQuad(srcCanvas, w, h){
   }
   const inFrame=p=>p && p.x>-dw*0.06 && p.x<dw*1.06 && p.y>-dh*0.06 && p.y<dh*1.06;
 
-  // apoyo de un lado: fracción del lado que cae sobre borde real
+  // puntuación de un lado: apoyo en bordes reales × contraste perpendicular.
+  // CLAVE: un borde verdadero tiene papel de un lado y fondo del otro
+  // (contraste alto). Una línea INTERNA del documento (divisor de tabla)
+  // tiene papel de ambos lados (contraste ~0) y queda castigada sola.
   function sideSupport(p,q,isFrame){
-    if(isFrame) return 0.55; // los lados del cuadro no exigen evidencia
-    const N=24; let hit=0;
+    if(isFrame) return 0.55;
+    const N=24; let hit=0, contrast=0, cN=0;
+    const dx=q.x-p.x, dy=q.y-p.y, L=Math.hypot(dx,dy)+1e-9;
+    const px=-dy/L, py=dx/L; // perpendicular unitario
+    const off=6;
     for(let i=0;i<=N;i++){
-      const x=Math.round(p.x+(q.x-p.x)*i/N), y=Math.round(p.y+(q.y-p.y)*i/N);
-      if(x>=0&&x<dw&&y>=0&&y<dh&&sup[y*dw+x]>0) hit++;
+      const x=p.x+dx*i/N, y=p.y+dy*i/N;
+      const xi=Math.round(x), yi=Math.round(y);
+      if(xi>=0&&xi<dw&&yi>=0&&yi<dh&&sup[yi*dw+xi]>0) hit++;
+      const xa=Math.round(x+px*off), ya=Math.round(y+py*off);
+      const xb=Math.round(x-px*off), yb=Math.round(y-py*off);
+      if(xa>=0&&xa<dw&&ya>=0&&ya<dh&&xb>=0&&xb<dw&&yb>=0&&yb<dh){
+        contrast+=Math.abs(grayData[ya*dw+xa]-grayData[yb*dw+xb]); cN++;
+      }
     }
-    return hit/(N+1);
+    const supFrac=hit/(N+1);
+    const contFrac=cN? Math.min(1,(contrast/cN)/40) : 0; // 40+ niveles = borde pleno
+    return supFrac*(0.30+0.70*contFrac);
   }
   function angleAt(a,b,c){
     const v1x=a.x-b.x,v1y=a.y-b.y,v2x=c.x-b.x,v2y=c.y-b.y;
