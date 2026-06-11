@@ -388,7 +388,7 @@ function orderQuad(pts){
   return pts.slice().sort((a, b) => Math.atan2(a.y - cy, a.x - cx) - Math.atan2(b.y - cy, b.x - cx));
 }
 
-// CORRECCIÓN DEFINTIVA: Recorte Inteligente Inmune a Texturas
+// RESTAURADO A VERSIÓN ESTABLE: Contornos limpios, sin medianBlur ni cajas invasivas.
 function detectDocQuad(srcCanvas, w, h){
   const DW = 480, sc = DW / w, dw = DW, dh = Math.round(h * sc);
   const small = document.createElement('canvas'); 
@@ -400,26 +400,25 @@ function detectDocQuad(srcCanvas, w, h){
 
   cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
   
-  // 1. EL SECRETO: Median Blur aplasta las texturas de tela, madera o mezclilla
-  cv.medianBlur(gray, gray, 7);
+  // Desenfoque estándar, sin destruir los bordes de la hoja contra el fondo
   cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
   
-  // 2. Canny Balanceado
-  cv.Canny(gray, edges, 30, 100);
+  // Valores Canny originales probados (altamente estables)
+  cv.Canny(gray, edges, 75, 200);
 
-  // 3. Cerrar Bordes
-  let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
+  let kernel = cv.Mat.ones(5, 5, cv.CV_8U);
   cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
 
   let contours = new cv.MatVector();
   let hierarchy = new cv.Mat();
   cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
 
+  // Filtrar contornos por área y ordenarlos de mayor a menor
   let cnts = [];
   for (let i = 0; i < contours.size(); ++i) {
     let cnt = contours.get(i);
     let area = cv.contourArea(cnt);
-    if (area > (dw * dh * 0.15) && area < (dw * dh * 0.98)) {
+    if (area > (dw * dh * 0.15)) {
       cnts.push({ cnt: cnt, area: area });
     } else {
       cnt.delete();
@@ -429,36 +428,30 @@ function detectDocQuad(srcCanvas, w, h){
 
   let bestQuad = null;
 
+  // Buscar el primer contorno (el más grande) que encaje perfectamente en 4 puntos
   for (let i = 0; i < cnts.length; i++) {
     let cnt = cnts[i].cnt;
     let peri = cv.arcLength(cnt, true);
     let approx = new cv.Mat();
 
-    // Límite seguro (0.06): Permite cierta deformación natural del papel pero evita 
-    // atrapar manchas amorfotas del fondo.
-    for(let eps = 0.02; eps <= 0.06; eps += 0.01) {
-      cv.approxPolyDP(cnt, approx, eps * peri, true);
-      
-      // CANDADO DE CONVEXIDAD: Evita figuras rotas o esquinas cruzadas
-      if (approx.rows === 4 && cv.isContourConvex(approx)) {
-        bestQuad = [];
-        for (let j = 0; j < 4; j++) {
-          bestQuad.push({
-            x: approx.data32S[j * 2] / sc,
-            y: approx.data32S[j * 2 + 1] / sc
-          });
-        }
-        break;
+    // Tolerancia estricta del 2% (Garantiza recortes rectos y rechaza manchas y clips)
+    cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
+
+    if (approx.rows === 4) {
+      bestQuad = [];
+      for (let j = 0; j < 4; j++) {
+        bestQuad.push({
+          x: approx.data32S[j * 2] / sc,
+          y: approx.data32S[j * 2 + 1] / sc
+        });
       }
+      approx.delete();
+      break; 
     }
     approx.delete();
-    if (bestQuad) break;
   }
 
-  // NOTA: Se eliminó el "Fallback Delimitador". Si no encuentra 4 esquinas verdaderas,
-  // devuelve NULL. Así, la app usará todo el marco de la foto y podrás ajustar sin que 
-  // la perspectiva se rompa automáticamente.
-
+  // Limpiar memoria
   for (let i = 0; i < cnts.length; i++) {
     cnts[i].cnt.delete();
   }
