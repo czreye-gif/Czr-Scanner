@@ -1,8 +1,3 @@
-Claro, César. Aquí tienes el archivo completo con las correcciones ya integradas (el CSS del contenedor de la lupa, la nueva lógica de `orderQuad` y el umbral relajado para la detección automática).
-
-Solo tienes que copiar todo este bloque, pegarlo en tu archivo `index.html` y guardar.
-
-```html
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -385,8 +380,10 @@ function detectDocQuad(srcCanvas, w, h){
 
   let src=cv.imread(small), gray=new cv.Mat(), edges=new cv.Mat();
   cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
-  cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
-  cv.Canny(gray,edges,50,150);
+  
+  // CORRECCIÓN 3A: Desenfoque más agresivo y umbrales más permisivos
+  cv.GaussianBlur(gray,gray,new cv.Size(7,7),0);
+  cv.Canny(gray,edges,30,100);
 
   let support=new cv.Mat();
   cv.dilate(edges,support,cv.Mat.ones(5,5,cv.CV_8U));
@@ -394,7 +391,10 @@ function detectDocQuad(srcCanvas, w, h){
   const grayData=new Uint8Array(gray.data);
 
   let linesMat=new cv.Mat();
-  cv.HoughLinesP(edges,linesMat,1,Math.PI/180,40,Math.min(dw,dh)*0.30,Math.min(dw,dh)*0.06);
+  
+  // CORRECCIÓN 3B: Parámetros HoughLinesP más relajados
+  cv.HoughLinesP(edges, linesMat, 1, Math.PI/180, 30, Math.min(dw,dh)*0.20, Math.min(dw,dh)*0.08);
+  
   const horiz=[], vert=[];
   for(let i=0;i<linesMat.rows;i++){
     const x1=linesMat.data32S[i*4],y1=linesMat.data32S[i*4+1],
