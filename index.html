@@ -360,7 +360,7 @@ function work2canvas(srcCanvas){
   return c;
 }
 
-// CORRECCIÓN 1: Nuevo ordenamiento por sumas y diferencias
+// Ordenamiento robusto por sumas y diferencias
 function orderQuad(pts){
   const sum = pts.map(p => p.x + p.y);
   const diff = pts.map(p => p.x - p.y);
@@ -373,126 +373,70 @@ function orderQuad(pts){
   return [tl, tr, br, bl];
 }
 
+// CORRECCIÓN DEFINITIVA: Detección por Búsqueda de Contornos (findContours)
 function detectDocQuad(srcCanvas, w, h){
-  const DW=480, sc=DW/w, dw=DW, dh=Math.round(h*sc);
-  const small=document.createElement('canvas'); small.width=dw; small.height=dh;
-  small.getContext('2d').drawImage(srcCanvas,0,0,dw,dh);
+  const DW = 480, sc = DW / w, dw = DW, dh = Math.round(h * sc);
+  const small = document.createElement('canvas'); 
+  small.width = dw; small.height = dh;
+  small.getContext('2d').drawImage(srcCanvas, 0, 0, dw, dh);
 
-  let src=cv.imread(small), gray=new cv.Mat(), edges=new cv.Mat();
-  cv.cvtColor(src,gray,cv.COLOR_RGBA2GRAY);
-  
-  // CORRECCIÓN 3A: Desenfoque más agresivo y umbrales más permisivos
-  cv.GaussianBlur(gray,gray,new cv.Size(7,7),0);
-  cv.Canny(gray,edges,30,100);
+  let src = cv.imread(small);
+  let gray = new cv.Mat(), edges = new cv.Mat();
 
-  let support=new cv.Mat();
-  cv.dilate(edges,support,cv.Mat.ones(5,5,cv.CV_8U));
-  const sup=support.data;
-  const grayData=new Uint8Array(gray.data);
+  // Escala de grises y desenfoque para eliminar ruido del papel
+  cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+  cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
 
-  let linesMat=new cv.Mat();
-  
-  // CORRECCIÓN 3B: Parámetros HoughLinesP más relajados
-  cv.HoughLinesP(edges, linesMat, 1, Math.PI/180, 30, Math.min(dw,dh)*0.20, Math.min(dw,dh)*0.08);
-  
-  const horiz=[], vert=[];
-  for(let i=0;i<linesMat.rows;i++){
-    const x1=linesMat.data32S[i*4],y1=linesMat.data32S[i*4+1],
-          x2=linesMat.data32S[i*4+2],y2=linesMat.data32S[i*4+3];
-    const len=Math.hypot(x2-x1,y2-y1);
-    let ang=Math.atan2(y2-y1,x2-x1)*180/Math.PI;
-    ang=((ang%180)+180)%180;
-    const L={x1,y1,x2,y2,len,frame:false};
-    if(ang<35||ang>145) horiz.push(L);
-    else if(ang>55&&ang<125) vert.push(L);
-  }
-  linesMat.delete();
+  // Detección de bordes (Canny adaptativo)
+  cv.Canny(gray, edges, 75, 200);
 
-  function dedupe(arr,keyFn,tol){
-    arr.sort((a,b)=>b.len-a.len);
-    const out=[];
-    for(const L of arr){
-      const k=keyFn(L);
-      if(!out.some(o=>Math.abs(keyFn(o)-k)<tol)) out.push(L);
-      if(out.length>=7) break;
+  // Engrosar las líneas para conectar bordes rotos
+  let kernel = cv.Mat.ones(5, 5, cv.CV_8U);
+  cv.morphologyEx(edges, edges, cv.MORPH_CLOSE, kernel);
+
+  // Encontrar contornos
+  let contours = new cv.MatVector();
+  let hierarchy = new cv.Mat();
+  cv.findContours(edges, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
+
+  let bestQuad = null;
+  let maxArea = 0;
+
+  for (let i = 0; i < contours.size(); ++i) {
+    let cnt = contours.get(i);
+    let area = cv.contourArea(cnt);
+
+    // Ignorar basura (menos del 15% de la foto)
+    if (area < (dw * dh * 0.15)) {
+      cnt.delete();
+      continue;
     }
-    return out;
-  }
-  const hLines=dedupe(horiz,L=>(L.y1+L.y2)/2,dh*0.04);
-  const vLines=dedupe(vert, L=>(L.x1+L.x2)/2,dw*0.04);
 
-  hLines.push({x1:0,y1:1,x2:dw,y2:1,len:dw,frame:true});
-  hLines.push({x1:0,y1:dh-2,x2:dw,y2:dh-2,len:dw,frame:true});
-  vLines.push({x1:1,y1:0,x2:1,y2:dh,len:dh,frame:true});
-  vLines.push({x1:dw-2,y1:0,x2:dw-2,y2:dh,len:dh,frame:true});
+    // Aproximar polígono
+    let peri = cv.arcLength(cnt, true);
+    let approx = new cv.Mat();
+    cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
 
-  function inter(a,b){
-    const d1x=a.x2-a.x1,d1y=a.y2-a.y1,d2x=b.x2-b.x1,d2y=b.y2-b.y1;
-    const den=d1x*d2y-d1y*d2x;
-    if(Math.abs(den)<1e-9) return null;
-    const t=((b.x1-a.x1)*d2y-(b.y1-a.y1)*d2x)/den;
-    return {x:a.x1+t*d1x, y:a.y1+t*d1y};
-  }
-  const inFrame=p=>p && p.x>-dw*0.06 && p.x<dw*1.06 && p.y>-dh*0.06 && p.y<dh*1.06;
-
-  function sideSupport(p,q,isFrame){
-    if(isFrame) return 0.55;
-    const N=24; let hit=0, contrast=0, cN=0;
-    const dx=q.x-p.x, dy=q.y-p.y, L=Math.hypot(dx,dy)+1e-9;
-    const px=-dy/L, py=dx/L; 
-    const off=6;
-    for(let i=0;i<=N;i++){
-      const x=p.x+dx*i/N, y=p.y+dy*i/N;
-      const xi=Math.round(x), yi=Math.round(y);
-      if(xi>=0&&xi<dw&&yi>=0&&yi<dh&&sup[yi*dw+xi]>0) hit++;
-      const xa=Math.round(x+px*off), ya=Math.round(y+py*off);
-      const xb=Math.round(x-px*off), yb=Math.round(y-py*off);
-      if(xa>=0&&xa<dw&&ya>=0&&ya<dh&&xb>=0&&xb<dw&&yb>=0&&yb<dh){
-        contrast+=Math.abs(grayData[ya*dw+xa]-grayData[yb*dw+xb]); cN++;
+    // Si tiene 4 lados y es el más grande hasta ahora
+    if (approx.rows === 4 && area > maxArea) {
+      maxArea = area;
+      bestQuad = [];
+      for (let j = 0; j < 4; j++) {
+        bestQuad.push({
+          x: approx.data32S[j * 2] / sc,
+          y: approx.data32S[j * 2 + 1] / sc
+        });
       }
     }
-    const supFrac=hit/(N+1);
-    const contFrac=cN? Math.min(1,(contrast/cN)/40) : 0; 
-    return supFrac*(0.30+0.70*contFrac);
-  }
-  function angleAt(a,b,c){
-    const v1x=a.x-b.x,v1y=a.y-b.y,v2x=c.x-b.x,v2y=c.y-b.y;
-    const d=(v1x*v2x+v1y*v2y)/(Math.hypot(v1x,v1y)*Math.hypot(v2x,v2y)+1e-9);
-    return Math.acos(Math.max(-1,Math.min(1,d)))*180/Math.PI;
+    cnt.delete();
+    approx.delete();
   }
 
-  let best=null, bestScore=0;
-  for(let i=0;i<hLines.length;i++) for(let j=i+1;j<hLines.length;j++){
-    for(let k=0;k<vLines.length;k++) for(let l=k+1;l<vLines.length;l++){
-      const h1=hLines[i],h2=hLines[j],v1=vLines[k],v2=vLines[l];
-      if(h1.frame&&h2.frame&&v1.frame&&v2.frame) continue;
-      const A=inter(h1,v1),B=inter(h1,v2),C=inter(h2,v2),D=inter(h2,v1);
-      if(!(inFrame(A)&&inFrame(B)&&inFrame(C)&&inFrame(D))) continue;
-      const pts=[A,B,C,D];
-      let area=0;
-      for(let t=0;t<4;t++){const p=pts[t],q=pts[(t+1)%4]; area+=p.x*q.y-q.x*p.y;}
-      area=Math.abs(area)/2;
-      if(area<dw*dh*0.15 || area>dw*dh*0.985) continue;
-      let okAng=true;
-      for(let t=0;t<4;t++){
-        const a=angleAt(pts[(t+3)%4],pts[t],pts[(t+1)%4]);
-        if(a<55||a>125){okAng=false;break;}
-      }
-      if(!okAng) continue;
-      const s=sideSupport(A,B,h1.frame)+sideSupport(B,C,v2.frame)
-             +sideSupport(C,D,h2.frame)+sideSupport(D,A,v1.frame);
-      const score=s+(area/(dw*dh))*1.2; 
-      if(score>bestScore){ bestScore=score; best=pts; }
-    }
-  }
+  // Limpiar memoria
+  src.delete(); gray.delete(); edges.delete(); kernel.delete();
+  contours.delete(); hierarchy.delete();
 
-  src.delete(); gray.delete(); edges.delete(); support.delete();
-
-  // CORRECCIÓN 2: Umbral relajado de 2.2 a 1.4
-  if(best && bestScore>1.4){
-    return best.map(p=>({x:p.x/sc, y:p.y/sc}));
-  }
-  return null;
+  return bestQuad;
 }
 
 function warpCanvas(srcCanvas, quad){
