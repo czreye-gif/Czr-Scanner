@@ -6,9 +6,10 @@
 <title>Escáner — Despacho</title>
 <style>
   :root{
-    --ink:#14161a; --paper:#fbfaf7; --line:#d8d2c4;
-    --sello:#1f5c4d; --sello-soft:#e6efe9;
-    --warn:#9a4a2f; --muted:#6b665c;
+    --ink:#16181c; --paper:#faf8f4; --line:#e4ded2;
+    --sello:#1f5c4d; --sello-soft:#e6efe9; --sello-deep:#174a3e;
+    --warn:#9a4a2f; --muted:#6f695e; --card:#ffffff;
+    --r:10px; --rs:8px;
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
@@ -17,154 +18,167 @@
     background:var(--paper); color:var(--ink);
     -webkit-font-smoothing:antialiased; line-height:1.45;
   }
-  /* ---- header: como el membrete de un sello fiscal ---- */
+  /* ---- header: membrete fiscal ---- */
   header{
     border-bottom:2px solid var(--ink);
-    padding:18px 20px 14px;
+    padding:14px 18px 11px;
     display:flex; align-items:baseline; justify-content:space-between; gap:12px;
   }
-  .brand{display:flex; flex-direction:column}
   .brand h1{
     font-family:"SF Mono",ui-monospace,Menlo,monospace;
-    font-size:15px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
+    font-size:14px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
   }
-  .brand span{font-size:11px; color:var(--muted); letter-spacing:.12em; text-transform:uppercase}
+  .brand span{font-size:10px; color:var(--muted); letter-spacing:.14em; text-transform:uppercase}
   .folio{
     font-family:"SF Mono",ui-monospace,Menlo,monospace;
-    font-size:11px; color:var(--sello); border:1px solid var(--sello);
-    padding:3px 8px; border-radius:2px; white-space:nowrap;
+    font-size:10px; color:var(--sello); border:1px solid var(--sello);
+    padding:3px 8px; border-radius:4px; white-space:nowrap;
   }
-  main{max-width:760px; margin:0 auto; padding:18px 16px 80px}
+  main{max-width:720px; margin:0 auto; padding:16px 14px 90px}
 
-  .field{margin-bottom:14px}
+  .field{margin-bottom:12px}
   label.lbl{
-    display:block; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
-    color:var(--muted); margin-bottom:6px;
+    display:block; font-size:10px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--muted); margin-bottom:5px;
   }
   input[type=text]{
-    width:100%; padding:11px 12px; border:1px solid var(--line); border-radius:3px;
-    font-family:"SF Mono",ui-monospace,monospace; font-size:14px; background:#fff;
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:var(--rs);
+    font-family:"SF Mono",ui-monospace,monospace; font-size:14px; background:var(--card);
     text-transform:uppercase; letter-spacing:.05em;
   }
   input[type=text]:focus{outline:none; border-color:var(--sello); box-shadow:0 0 0 3px var(--sello-soft)}
 
-  .stage{
-    border:1px solid var(--line); border-radius:4px; background:#000;
-    margin:0 auto 4px; overflow:hidden; position:relative;
-    display:flex; align-items:center; justify-content:center;
-    width:100%; min-height:120px;
+  /* ---- botones base: compactos ---- */
+  button{
+    border:none; border-radius:var(--rs); cursor:pointer; font-family:inherit;
+    font-size:13px; font-weight:600; letter-spacing:.01em;
+    padding:0 14px; height:42px;
+    transition:transform .05s, opacity .15s, background .15s;
   }
-  .stage.live{min-height:72vh}
-  .stage video{display:block; width:100%; height:72vh; object-fit:cover}
-  .stage img{display:block; width:100%; height:auto; max-height:78vh; object-fit:contain}
-  .stage #work{display:none}
-  .stage .ph{color:#aaa; font-size:13px; padding:36px 24px; text-align:center}
-  #overlay{position:absolute; pointer-events:none}
+  button:active{transform:scale(.98)}
+  button:disabled{opacity:.35; cursor:not-allowed}
+  .b-sello{background:var(--sello); color:#fff}
+  .b-sello:active{background:var(--sello-deep)}
+  .b-primary{background:var(--ink); color:var(--paper)}
+  .b-ghost{background:var(--card); color:var(--ink); border:1px solid var(--line)}
 
-  /* ---- hero de captura nativa ---- */
+  /* ---- hero de captura ---- */
   .capture-hero{
-    border:1.5px dashed var(--line); border-radius:8px; background:#fff;
-    padding:32px 20px; text-align:center; margin-bottom:14px;
+    border:1.5px dashed var(--line); border-radius:var(--r); background:var(--card);
+    padding:28px 20px 22px; text-align:center; margin-bottom:12px;
   }
-  .hero-icon{font-size:46px; margin-bottom:8px}
-  .hero-text{font-size:13px; color:var(--muted); margin-bottom:20px; max-width:340px; margin-left:auto; margin-right:auto}
-  .b-big{font-size:15px; padding:16px 18px; margin-bottom:10px; width:100%}
-  .capture-hero .b-ghost{width:100%}
+  .hero-icon{font-size:40px; margin-bottom:6px}
+  .hero-text{font-size:13px; color:var(--muted); margin:0 auto 18px; max-width:330px}
+  .capture-hero button{display:block; width:100%}
+  #btnCapture{height:50px; font-size:14px; margin-bottom:8px}
+  #btnGallery{height:40px; font-size:12px; font-weight:500}
 
   /* ---- vista revisión ---- */
   .rev-banner{
-    font-family:"SF Mono",ui-monospace,monospace; font-size:12px; letter-spacing:.08em;
-    text-transform:uppercase; color:var(--sello); background:var(--sello-soft);
-    border:1px solid var(--sello); border-radius:3px; padding:8px 12px; margin-bottom:12px;
-    text-align:center;
+    font-family:"SF Mono",ui-monospace,monospace; font-size:10px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--sello);
+    padding:0 2px 8px; text-align:center;
   }
   .rev-stage{
-    border:1px solid var(--line); border-radius:4px; background:#f0ede4;
-    padding:12px; display:flex; justify-content:center; align-items:center;
-    margin-bottom:6px; min-height:50vh; overflow:hidden; touch-action:none; position:relative;
+    border:1px solid var(--line); border-radius:var(--r); background:#eceadf;
+    display:flex; justify-content:center; align-items:center;
+    margin-bottom:10px; height:56vh; overflow:hidden; touch-action:none; position:relative;
   }
-  .zoom-ctrls{
-    position:absolute; bottom:10px; right:10px; display:flex; gap:6px; z-index:5;
-  }
-  .zoom-ctrls button{
-    width:auto; min-width:40px; height:40px; padding:0 12px; border:none; border-radius:20px;
-    background:rgba(20,22,26,.82); color:#fff; font-size:18px; font-weight:600;
-    cursor:pointer; backdrop-filter:blur(4px); flex:none; box-shadow:0 2px 8px rgba(0,0,0,.25);
-  }
-  .zoom-ctrls #zFit{font-size:12px; letter-spacing:.04em}
-
-  /* ---- modal esquinas ---- */
-  .modal{
-    position:fixed; inset:0; background:rgba(10,11,13,.88); z-index:50;
-    display:flex; align-items:center; justify-content:center; padding:16px;
-  }
-  .modal.hidden{display:none}
-  .modal-inner{background:var(--paper); border-radius:6px; padding:14px; width:100%; max-width:560px}
-  .modal-head{font-size:13px; color:var(--ink); margin-bottom:10px; text-align:center; font-weight:600}
-  .corner-area{position:relative; width:100%; background:#000; border-radius:4px; overflow:hidden; margin-bottom:12px; touch-action:none}
-  .corner-area canvas{display:block; width:100%; height:auto}
-  .corner-area svg{position:absolute; top:0; left:0; width:100%; height:100%}
   .rev-stage img{
-    display:block; max-width:100%; max-height:62vh; width:auto; height:auto;
-    box-shadow:0 2px 18px rgba(0,0,0,.22); background:#fff;
-    transform-origin:center center; transition:transform .05s linear;
-    will-change:transform;
+    display:block; max-width:96%; max-height:94%; width:auto; height:auto;
+    box-shadow:0 3px 22px rgba(20,24,28,.22); background:#fff;
+    transform-origin:center center; will-change:transform;
   }
   .rev-stage img.hidden{display:block}
-  .zoom-hint{font-size:11px; color:var(--muted); text-align:center; margin-bottom:12px; letter-spacing:.02em}
-  .filters{display:flex; gap:8px; margin-bottom:12px}
+  .zoom-ctrls{position:absolute; bottom:10px; right:10px; display:flex; gap:6px; z-index:5}
+  .zoom-ctrls button{
+    min-width:38px; height:38px; padding:0 11px; border-radius:19px;
+    background:rgba(22,24,28,.78); color:#fff; font-size:17px;
+    backdrop-filter:blur(5px); box-shadow:0 2px 10px rgba(0,0,0,.22);
+  }
+  .zoom-ctrls #zFit{font-size:11px; letter-spacing:.05em}
+
+  /* ---- filtros: control segmentado ---- */
+  .filters{
+    display:flex; background:var(--card); border:1px solid var(--line);
+    border-radius:var(--rs); padding:3px; gap:2px; margin-bottom:10px;
+  }
   .f-btn{
-    flex:1; padding:9px 4px; border:1px solid var(--line); background:#fff; border-radius:3px;
-    font-size:11px; font-weight:600; letter-spacing:.02em; cursor:pointer; color:var(--muted);
+    flex:1; height:34px; padding:0 6px; border-radius:6px;
+    font-size:12px; font-weight:600; color:var(--muted); background:transparent;
     white-space:nowrap;
   }
-  .f-btn.f-active{background:var(--ink); color:var(--paper); border-color:var(--ink)}
-  #btnFlash{flex:0 0 110px; min-width:0}
-  #btnFlash.f-active{background:var(--sello); color:#fff; border-color:var(--sello)}
-  .stage .ph{color:#777; font-size:13px; padding:40px 24px; text-align:center}
+  .f-btn.f-active{background:var(--ink); color:var(--paper)}
 
-  .row{display:flex; gap:10px; flex-wrap:wrap; margin-top:12px}
-  button{
-    flex:1; min-width:130px; padding:13px 14px; border:none; border-radius:3px;
-    font-size:13px; font-weight:600; letter-spacing:.03em; cursor:pointer;
-    font-family:inherit; transition:transform .04s, background .15s;
-  }
-  button:active{transform:translateY(1px)}
-  button:disabled{opacity:.4; cursor:not-allowed}
-  .b-primary{background:var(--ink); color:var(--paper)}
-  .b-sello{background:var(--sello); color:#fff}
-  .b-ghost{background:#fff; color:var(--ink); border:1px solid var(--line)}
+  /* ---- barra de acciones de revisión ---- */
+  .actions{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px}
+  .actions .full{grid-column:1 / -1}
+  .a-btn{height:42px; font-size:13px}
 
-  .pages{margin-top:18px}
+  .pages{margin-top:16px}
   .pages h2{
-    font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
-    border-bottom:1px solid var(--line); padding-bottom:6px; margin-bottom:10px;
-    display:flex; justify-content:space-between;
+    font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted);
+    border-bottom:1px solid var(--line); padding-bottom:5px; margin-bottom:9px;
+    display:flex; justify-content:space-between; font-weight:600;
   }
   .thumbs{display:flex; gap:8px; flex-wrap:wrap}
-  .thumb{position:relative; width:84px; height:112px; border:1px solid var(--line); border-radius:3px; overflow:hidden; background:#fff}
+  .thumb{position:relative; width:76px; height:101px; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff}
   .thumb img{width:100%; height:100%; object-fit:cover}
   .thumb .num{
     position:absolute; top:0; left:0; background:var(--ink); color:var(--paper);
-    font-family:"SF Mono",monospace; font-size:10px; padding:1px 5px; border-bottom-right-radius:3px;
+    font-family:"SF Mono",monospace; font-size:9px; padding:1px 5px; border-bottom-right-radius:5px;
   }
   .thumb .del{
-    position:absolute; bottom:2px; right:2px; background:var(--warn); color:#fff;
-    border:none; width:20px; height:20px; border-radius:50%; font-size:12px; cursor:pointer;
-    line-height:1; padding:0; flex:none; min-width:0;
+    position:absolute; bottom:3px; right:3px; background:rgba(154,74,47,.92); color:#fff;
+    width:22px; height:22px; min-width:0; padding:0; border-radius:50%; font-size:12px; line-height:1;
   }
-  .toggle{display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); margin-top:12px}
+  .toggle{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted); margin-top:10px}
   .toggle input{width:16px; height:16px; accent-color:var(--sello)}
   .status{
-    font-family:"SF Mono",monospace; font-size:12px; color:var(--sello);
-    min-height:18px; margin-top:10px;
+    font-family:"SF Mono",monospace; font-size:11px; color:var(--sello);
+    min-height:16px; margin-top:8px;
   }
   .status.err{color:var(--warn)}
   footer{
     position:fixed; bottom:0; left:0; right:0; background:var(--paper);
-    border-top:2px solid var(--ink); padding:10px 16px;
+    border-top:2px solid var(--ink); padding:10px 14px;
+    transition:transform .2s;
   }
-  footer .inner{max-width:760px; margin:0 auto; display:flex; gap:10px}
+  footer.hidden{display:none}
+  footer .inner{max-width:720px; margin:0 auto; display:flex; gap:8px}
+  footer button{flex:1; height:44px}
+
+  /* ---- editor de esquinas: pantalla completa con lupa ---- */
+  .corner-editor{
+    position:fixed; inset:0; background:#101214; z-index:60;
+    display:flex; flex-direction:column;
+  }
+  .corner-editor.hidden{display:none}
+  .ce-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 16px; color:#e8e5de;
+  }
+  .ce-head .t{font-size:13px; font-weight:600; letter-spacing:.02em}
+  .ce-head .s{font-size:11px; color:#8b877e; margin-top:2px}
+  .ce-wrap{
+    flex:1; position:relative; overflow:hidden;
+    display:flex; align-items:center; justify-content:center;
+    touch-action:none; padding:8px;
+  }
+  .ce-frame{position:relative; max-width:100%; max-height:100%}
+  .ce-frame canvas{display:block; max-width:100%; max-height:calc(100vh - 170px); width:auto; height:auto; border-radius:4px}
+  .ce-frame svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible}
+  .ce-loupe{
+    position:absolute; width:128px; height:128px; border-radius:50%;
+    border:2.5px solid #fff; box-shadow:0 4px 18px rgba(0,0,0,.5);
+    overflow:hidden; display:none; pointer-events:none; z-index:5; background:#000;
+  }
+  .ce-loupe canvas{width:128px; height:128px}
+  .ce-actions{display:flex; gap:8px; padding:12px 16px 18px}
+  .ce-actions button{flex:1; height:46px}
+  .ce-cancel{background:rgba(255,255,255,.08); color:#e8e5de; border:1px solid rgba(255,255,255,.15)}
+  .ce-apply{background:var(--sello); color:#fff}
+
   .hidden{display:none}
 </style>
 </head>
@@ -208,7 +222,7 @@
 
   <!-- ===== VISTA REVISIÓN ===== -->
   <section id="viewReview" class="hidden">
-    <div class="rev-banner" id="revBanner">Página 1 lista</div>
+    <div class="rev-banner" id="revBanner">Página 1</div>
     <div class="rev-stage" id="revStage">
       <img id="preview" alt="Página capturada">
       <div class="zoom-ctrls">
@@ -217,21 +231,16 @@
         <button id="zIn" type="button">+</button>
       </div>
     </div>
-    <div class="zoom-hint">Usa + / − o pellizca para acercar · arrastra para mover</div>
     <div class="filters">
       <button class="f-btn" id="f-color">Color</button>
       <button class="f-btn f-active" id="f-gris">Gris</button>
       <button class="f-btn" id="f-byn">B/N texto</button>
     </div>
-    <div class="row">
-      <button class="b-ghost" id="btnCorners">⛶ Ajustar esquinas</button>
-      <button class="b-ghost" id="btnRetake">↺ Rehacer</button>
-    </div>
-    <div class="row">
-      <button class="b-primary" id="btnMore">+ Otra página</button>
-    </div>
-    <div class="row">
-      <button class="b-sello" id="btnFinish">Terminar y generar PDF</button>
+    <div class="actions">
+      <button class="b-ghost a-btn" id="btnCorners">⛶ Esquinas</button>
+      <button class="b-ghost a-btn" id="btnRetake">↺ Rehacer</button>
+      <button class="b-primary a-btn" id="btnMore">+ Otra página</button>
+      <button class="b-sello a-btn" id="btnFinish">✓ Generar PDF</button>
     </div>
     <div class="rev-thumbs-wrap pages hidden" id="revPagesBox">
       <h2><span>Páginas</span><span id="revCount">0</span></h2>
@@ -242,18 +251,24 @@
   <div class="status" id="status"></div>
 </main>
 
-<!-- ===== MODAL AJUSTE DE ESQUINAS ===== -->
-<div id="cornerModal" class="modal hidden">
-  <div class="modal-inner">
-    <div class="modal-head">Arrastra las 4 esquinas al borde del documento</div>
-    <div class="corner-area" id="cornerArea">
+<!-- ===== EDITOR DE ESQUINAS (pantalla completa) ===== -->
+<div id="cornerModal" class="corner-editor hidden">
+  <div class="ce-head">
+    <div>
+      <div class="t">Ajustar esquinas</div>
+      <div class="s">Arrastra cada esquina · la lupa muestra el punto exacto</div>
+    </div>
+  </div>
+  <div class="ce-wrap" id="cornerArea">
+    <div class="ce-frame">
       <canvas id="cornerCanvas"></canvas>
       <svg id="cornerSvg"></svg>
     </div>
-    <div class="row">
-      <button class="b-ghost" id="cornerCancel">Cancelar</button>
-      <button class="b-sello" id="cornerApply">Aplicar recorte</button>
-    </div>
+    <div class="ce-loupe" id="loupe"><canvas id="loupeCanvas" width="128" height="128"></canvas></div>
+  </div>
+  <div class="ce-actions">
+    <button class="ce-cancel" id="cornerCancel">Cancelar</button>
+    <button class="ce-apply" id="cornerApply">Aplicar recorte</button>
   </div>
 </div>
 
@@ -307,7 +322,6 @@ function loadCV(){
 }
 
 /* ---------- captura con cámara nativa de la MatePad ---------- */
-let lastQuad=null; // ya no se usa en vivo, se mantiene por compatibilidad
 
 // el botón principal abre la cámara del sistema (con flash y buena definición)
 $('btnCapture').onclick = ()=> $('fileCapture').click();
@@ -320,7 +334,6 @@ function handleIncomingFile(e){
   setStatus('Procesando imagen…');
   const img=new Image();
   img.onload=()=>{
-    lastQuad=null; // que processSource detecte desde cero
     processSource(img, img.naturalWidth, img.naturalHeight);
   };
   img.onerror=()=> setStatus('No se pudo leer la imagen.', true);
@@ -339,38 +352,44 @@ async function processSource(src, w, h){
 
     let bestQuad=null;
 
-    // 1) si la detección en vivo ya tenía un cuadrilátero, úsalo (rápido y consistente)
-    if(lastQuad && lastQuad.length===4){
-      bestQuad=lastQuad.map(p=>({x:p.x, y:p.y}));
-    } else {
-      // 2) si no, detecta sobre versión reducida (rápido)
-      const DW=700, sc=DW/w, dw=DW, dh=Math.round(h*sc);
+    // detección sobre versión reducida (rápida), con dos pasadas de sensibilidad
+    {
+      const DW=500, sc=DW/w, dw=DW, dh=Math.round(h*sc);
       const small=document.createElement('canvas'); small.width=dw; small.height=dh;
       small.getContext('2d').drawImage(work,0,0,dw,dh);
-      let img=cv.imread(small), gray=new cv.Mat(), edges=new cv.Mat();
-      cv.cvtColor(img,gray,cv.COLOR_RGBA2GRAY);
-      cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
-      cv.Canny(gray,edges,40,120);
-      cv.dilate(edges,edges,cv.Mat.ones(5,5,cv.CV_8U));
-      let contours=new cv.MatVector(), hier=new cv.Mat();
-      cv.findContours(edges,contours,hier,cv.RETR_LIST,cv.CHAIN_APPROX_SIMPLE);
-      let bestArea=dw*dh*0.12;
-      for(let i=0;i<contours.size();i++){
-        const c=contours.get(i), peri=cv.arcLength(c,true), ap=new cv.Mat();
-        cv.approxPolyDP(c,ap,0.025*peri,true);
-        const area=Math.abs(cv.contourArea(ap));
-        if(ap.rows===4 && area>bestArea){
-          bestArea=area;
-          bestQuad=[]; for(let k=0;k<4;k++) bestQuad.push({x:ap.data32S[k*2]/sc, y:ap.data32S[k*2+1]/sc});
+
+      const tryDetect=(lo,hi,minFrac)=>{
+        let img=cv.imread(small), gray=new cv.Mat(), edges=new cv.Mat();
+        cv.cvtColor(img,gray,cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray,gray,new cv.Size(5,5),0);
+        cv.Canny(gray,edges,lo,hi);
+        cv.dilate(edges,edges,cv.Mat.ones(5,5,cv.CV_8U));
+        let contours=new cv.MatVector(), hier=new cv.Mat();
+        cv.findContours(edges,contours,hier,cv.RETR_LIST,cv.CHAIN_APPROX_SIMPLE);
+        let q=null, bestArea=dw*dh*minFrac;
+        for(let i=0;i<contours.size();i++){
+          const c=contours.get(i), peri=cv.arcLength(c,true), ap=new cv.Mat();
+          cv.approxPolyDP(c,ap,0.03*peri,true);
+          const area=Math.abs(cv.contourArea(ap));
+          if(ap.rows===4 && area>bestArea){
+            bestArea=area;
+            q=[]; for(let k=0;k<4;k++) q.push({x:ap.data32S[k*2]/sc, y:ap.data32S[k*2+1]/sc});
+          }
+          ap.delete(); c.delete();
         }
-        ap.delete(); c.delete();
-      }
-      img.delete();gray.delete();edges.delete();contours.delete();hier.delete();
+        img.delete();gray.delete();edges.delete();contours.delete();hier.delete();
+        return q;
+      };
+
+      // pasada normal; si no encuentra, pasada sensible (para fotos ya limpias/claras)
+      bestQuad = tryDetect(40,120,0.12) || tryDetect(15,60,0.10);
     }
 
-    // si no detecta, usamos las 4 esquinas de la imagen completa (editables a mano)
+    // si no detecta (ej. foto del modo escanear ya recortada), usa el marco completo
+    // con un margen mínimo: queda lista tal cual y las manijas son alcanzables
+    const m=Math.round(Math.min(w,h)*0.01);
     const quad = bestQuad ? orderQuad(bestQuad)
-                          : [{x:0,y:0},{x:w,y:0},{x:w,y:h},{x:0,y:h}];
+                          : [{x:m,y:m},{x:w-m,y:m},{x:w-m,y:h-m},{x:m,y:h-m}];
 
     // guardamos el CRUDO a color + esquinas; el enderezado se hace al renderizar
     addPage(work2canvas(work), quad, !!bestQuad);
@@ -590,10 +609,12 @@ function applyFilter(srcCanvas, mode){
 function showCam(){
   $('viewReview').classList.add('hidden');
   $('viewCam').classList.remove('hidden');
+  document.querySelector('footer').classList.remove('hidden');
 }
 function showReview(){
   $('viewCam').classList.add('hidden');
   $('viewReview').classList.remove('hidden');
+  document.querySelector('footer').classList.add('hidden');
 }
 
 /* ---------- gestión de páginas ---------- */
@@ -683,79 +704,111 @@ $('btnMore').onclick=()=>{             // conserva y vuelve a tomar otra
 };
 $('btnFinish').onclick=()=>{ $('btnPdf').click(); };
 
-/* ---------- editor manual de esquinas ---------- */
-let cornerPts=[], cornerScale=1, dragIdx=-1;
+/* ---------- editor de esquinas: pantalla completa + lupa ---------- */
+let cornerPts=[], cornerScale=1, dragIdx=-1, ceRaw=null;
+
 $('btnCorners').onclick=()=>{
   if(!pages.length) return;
   const pg=pages[pages.length-1];
-  const raw=pg.raw;
+  ceRaw=pg.raw;
   const cv2=$('cornerCanvas'), ctx=cv2.getContext('2d');
-  // dibujar el crudo a tamaño manejable
-  const maxW=520, scale=Math.min(1, maxW/raw.width);
-  cv2.width=raw.width*scale; cv2.height=raw.height*scale;
-  ctx.drawImage(raw,0,0,cv2.width,cv2.height);
+  // canvas a resolución alta para que se vea nítido (CSS lo escala)
+  const maxW=1100, scale=Math.min(1, maxW/ceRaw.width);
+  cv2.width=Math.round(ceRaw.width*scale); cv2.height=Math.round(ceRaw.height*scale);
+  ctx.drawImage(ceRaw,0,0,cv2.width,cv2.height);
   cornerScale=scale;
-  // esquinas actuales (en coords del crudo) -> a escala del canvas
+  // svg con el MISMO sistema de coordenadas que el canvas (sin importar tamaño CSS)
+  $('cornerSvg').setAttribute('viewBox','0 0 '+cv2.width+' '+cv2.height);
   cornerPts=pg.quad.map(p=>({x:p.x*scale, y:p.y*scale}));
+  dragIdx=-1;
   drawCorners();
   $('cornerModal').classList.remove('hidden');
 };
+
 function drawCorners(){
-  const svg=$('cornerSvg');
+  const svg=$('cornerSvg'), W=$('cornerCanvas').width;
+  const R=Math.max(18, W*0.035);           // radio de manija proporcional
   const poly=cornerPts.map(p=>p.x+','+p.y).join(' ');
-  let h='<polygon points="'+poly+'" fill="rgba(25,195,125,0.12)" stroke="#19c37d" stroke-width="2"/>';
+  let h='<polygon points="'+poly+'" fill="rgba(31,92,77,0.10)" stroke="#2ecc8f" stroke-width="'+(W*0.004)+'"/>';
   cornerPts.forEach((p,i)=>{
-    const active = i===dragIdx;
-    // cruz fina centrada en la esquina real (precisa, no la tapa el dedo)
-    h+='<line x1="'+(p.x-16)+'" y1="'+p.y+'" x2="'+(p.x+16)+'" y2="'+p.y+'" stroke="#19c37d" stroke-width="1.5"/>';
-    h+='<line x1="'+p.x+'" y1="'+(p.y-16)+'" x2="'+p.x+'" y2="'+(p.y+16)+'" stroke="#19c37d" stroke-width="1.5"/>';
-    // anillo de agarre (grande para el dedo, hueco para ver el punto)
-    h+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(active?22:16)+'" fill="'+(active?'rgba(25,195,125,0.25)':'rgba(25,195,125,0.12)')+'" stroke="#19c37d" stroke-width="2"/>';
+    const a=i===dragIdx;
+    h+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(a?R*1.25:R)+'" fill="rgba(46,204,143,'+(a?'0.30':'0.16')+'" stroke="#2ecc8f" stroke-width="'+(W*0.005)+'"/>';
+    h+='<circle cx="'+p.x+'" cy="'+p.y+'" r="'+(W*0.006)+'" fill="#2ecc8f"/>';
   });
   svg.innerHTML=h;
 }
-function cornerEventXY(e){
-  const cv2=$('cornerCanvas');
-  const area=cv2.getBoundingClientRect();
-  const t=e.touches?e.touches[0]:e;
-  const sx=cv2.width/area.width, sy=cv2.height/area.height;
-  // offset vertical: el punto efectivo está ~28px ARRIBA del dedo, para no taparlo
-  const fingerOffset = e.touches ? 28 : 0;
-  return {x:(t.clientX-area.left)*sx, y:(t.clientY-area.top-fingerOffset)*sy};
+
+// pointer -> coords del canvas (vía viewBox compartido)
+function cePos(e){
+  const cv2=$('cornerCanvas'), r=cv2.getBoundingClientRect();
+  return {x:(e.clientX-r.left)*(cv2.width/r.width), y:(e.clientY-r.top)*(cv2.height/r.height)};
 }
-function startDrag(e){
-  const pos=cornerEventXY(e);
+
+const ceArea=$('cornerArea');
+ceArea.addEventListener('pointerdown',(e)=>{
+  if(!ceRaw) return;
+  const pos=cePos(e);
+  const W=$('cornerCanvas').width;
   let nearest=-1, nd=1e9;
   cornerPts.forEach((p,i)=>{ const d=Math.hypot(p.x-pos.x,p.y-pos.y); if(d<nd){nd=d;nearest=i;} });
-  if(nd<70){ dragIdx=nearest; drawCorners(); e.preventDefault(); }
-}
-function moveDrag(e){
+  // agarre generoso: hasta 12% del ancho de distancia
+  if(nd < W*0.12){
+    dragIdx=nearest;
+    ceArea.setPointerCapture(e.pointerId);
+    movePoint(pos); // engancha de inmediato
+    e.preventDefault();
+  }
+});
+ceArea.addEventListener('pointermove',(e)=>{
   if(dragIdx<0) return;
   e.preventDefault();
-  const pos=cornerEventXY(e);
+  movePoint(cePos(e), e.clientX, e.clientY);
+});
+ceArea.addEventListener('pointerup',()=>{ dragIdx=-1; $('loupe').style.display='none'; drawCorners(); });
+ceArea.addEventListener('pointercancel',()=>{ dragIdx=-1; $('loupe').style.display='none'; drawCorners(); });
+
+function movePoint(pos, clientX, clientY){
   const cv2=$('cornerCanvas');
   cornerPts[dragIdx]={x:Math.max(0,Math.min(cv2.width,pos.x)), y:Math.max(0,Math.min(cv2.height,pos.y))};
   drawCorners();
+  updateLoupe(clientX, clientY);
 }
-function endDrag(){ dragIdx=-1; drawCorners(); }
-$('cornerArea').addEventListener('touchstart',startDrag,{passive:false});
-$('cornerArea').addEventListener('touchmove',moveDrag,{passive:false});
-$('cornerArea').addEventListener('touchend',endDrag);
-$('cornerArea').addEventListener('mousedown',startDrag);
-$('cornerArea').addEventListener('mousemove',moveDrag);
-$('cornerArea').addEventListener('mouseup',endDrag);
 
-$('cornerCancel').onclick=()=>$('cornerModal').classList.add('hidden');
+// lupa: muestra ampliado el punto exacto, lejos del dedo
+function updateLoupe(clientX, clientY){
+  if(dragIdx<0) return;
+  const lp=$('loupe'), lc=$('loupeCanvas').getContext('2d');
+  const p=cornerPts[dragIdx];
+  // región del crudo alrededor de la esquina (en coords del crudo)
+  const rx=p.x/cornerScale, ry=p.y/cornerScale;
+  const Z=3, half=128/(2*Z); // zoom 3x
+  lc.fillStyle='#000'; lc.fillRect(0,0,128,128);
+  lc.drawImage(ceRaw, rx-half, ry-half, half*2, half*2, 0, 0, 128, 128);
+  // cruz del punto exacto
+  lc.strokeStyle='#2ecc8f'; lc.lineWidth=1.5;
+  lc.beginPath(); lc.moveTo(64,46); lc.lineTo(64,82); lc.moveTo(46,64); lc.lineTo(82,64); lc.stroke();
+  // posicionar la lupa en la esquina opuesta al dedo
+  const wrap=ceArea.getBoundingClientRect();
+  const onLeft = clientX!=null ? (clientX-wrap.left) < wrap.width/2 : true;
+  const onTop  = clientY!=null ? (clientY-wrap.top)  < wrap.height/2 : true;
+  lp.style.left = onLeft ? 'auto' : '14px';
+  lp.style.right = onLeft ? '14px' : 'auto';
+  lp.style.top = onTop ? 'auto' : '14px';
+  lp.style.bottom = onTop ? '14px' : 'auto';
+  lp.style.display='block';
+}
+
+$('cornerCancel').onclick=()=>{ $('cornerModal').classList.add('hidden'); $('loupe').style.display='none'; };
 $('cornerApply').onclick=()=>{
   const pg=pages[pages.length-1];
-  // pasar de coords del canvas a coords del crudo, y reordenar
   pg.quad=orderQuad(cornerPts.map(p=>({x:p.x/cornerScale, y:p.y/cornerScale})));
   pg.warpDirty=true;
   $('cornerModal').classList.add('hidden');
+  $('loupe').style.display='none';
   setStatus('Reaplicando recorte…');
   setTimeout(()=>{
     renderPageFilter(pages.length-1);
-    preview.src=pg.dataUrl;
+    preview.src=pages[pages.length-1].dataUrl;
     renderThumbs();
     setStatus('Recorte actualizado.');
   },20);
